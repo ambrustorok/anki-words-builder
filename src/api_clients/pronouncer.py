@@ -56,7 +56,7 @@ def pronounce_text(text, lang="da"):
         None
 
     Creates:
-        - `output_with_silence.wav`: An audio file with the TTS-generated speech and 1 second of silence added to the beginning.
+        - `output_with_silence.mp3`: An audio file with the TTS-generated speech and 1 second of silence added to the beginning.
 
     Notes:
         A temporary audio file is created during processing to store the initial TTS output. This file is deleted after the final output is created.
@@ -68,7 +68,7 @@ def pronounce_text(text, lang="da"):
     selected_voice = random.choice(voices)
 
     # Create a temporary file for the streamed audio output
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".wav") as temp_audio_file:
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".mp3") as temp_audio_file:
         temp_audio_path = temp_audio_file.name
 
         # Stream the TTS output to the temporary file
@@ -80,12 +80,12 @@ def pronounce_text(text, lang="da"):
             response.stream_to_file(temp_audio_path)
 
     # Create an output file path
-    output_file_path = "output_with_silence.wav"
+    output_file_path = "output_with_silence.mp3"
 
     # Add 1 second of silence to the audio
     add_silence(temp_audio_path, output_file_path, silence_duration_sec=1)
 
 
 # Call function with Danish sentence
-# translate_text(text="Hej, hvordan har du det?", lang="da")
-# translate_text(text="Szia, mizu?", lang="hu")
+pronounce_text(text="Hej, hvordan har du det?", lang="da")
+
