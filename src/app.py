@@ -1,74 +1,120 @@
 import gradio as gr
-from api_clients.translator import translate_text, generate_sentence
-from api_clients.pronouncer import pronounce_text
+import os
+import tempfile
+import numpy as np
+import soundfile as sf
+from dotenv import load_dotenv
+from openai import OpenAI
+import random
+
+from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
+from chatgpt_tools.tts import get_audio
+from anki_tools.anki_deck_creator import create_anki_deck
+
+load_dotenv()
+client = OpenAI()
+
+languages = ["Danish", "English"]
 
 
-def get_word_details(word, lang):
-    # Determine whether the word is in Danish or English
-    if lang == "Danish":
-        word_forms = {
-            "singular": word,
-            "plural": word + "er",
-            "past_tense": word + "ede",
-        }
-        sentence = generate_sentence(word, lang="da")
-        pronunciation_file = pronounce_text(word, lang="da")
-        translation = translate_text(word, source_lang="da", target_lang="en")
-    else:  # Assuming "English"
-        # Placeholder for English word forms; replace with actual implementation if needed
-        word_forms = {"singular": word, "plural": word + "s", "past_tense": word + "ed"}
-        sentence = generate_sentence(word, lang="da")
-        pronunciation_file = pronounce_text(word, lang="da")
-        translation = translate_text(word, source_lang="en", target_lang="da")
-
-    flashcards = create_flashcards(word, translation, lang)
-
-    return word_forms, sentence, pronunciation_file, flashcards
+def save_into_database(word, translation, sentence, audio_path, dictionary_form):
+    # Implement your database saving logic here
+    print(
+        f"Saving to database: {word}, {translation}, {sentence}, {audio_path}, {dictionary_form}"
+    )
+    return "Data saved successfully"
 
 
-def create_flashcards(word, translation, lang):
-    # Create flashcards based on language
-    if lang == "Danish":
-        anki_cards = {
-            "English to Danish": (word, translation),
-            "Danish to English": (translation, word),
-        }
-    else:  # Assuming "English"
-        anki_cards = {
-            "Danish to English": (word, translation),
-            "English to Danish": (translation, word),
-        }
-    return anki_cards
+def process_word(danish_word, custom_sentence="", language="Danish"):
+    translation = translate_word(client, danish_word, source_lang=language)
+    sentence = (
+        custom_sentence
+        if custom_sentence
+        else generate_sentence(client, danish_word, language)
+    )
+    dictionary_form = dictionarize_word(client, danish_word, language)
+    audio_path = get_audio(client, danish_word, language)
+
+    return translation, sentence, audio_path, dictionary_form
 
 
-def ui_function(word, lang):
-    word_forms, sentence, pronunciation_file, flashcards = get_word_details(word, lang)
-    return word_forms, sentence, pronunciation_file, flashcards
+def regenerate_sentence(word, language):
+    return generate_sentence(client, word, language)
 
 
-with gr.Blocks() as app:
-    with gr.Row():
-        word_input = gr.Textbox(label="Enter Word")
-        lang_dropdown = gr.Dropdown(
-            label="Select Language", choices=["Danish", "English"], value="Danish"
-        )
-        submit_button = gr.Button("Process word")
+def save_to_database(danish_word, translation, sentence, audio_path, dictionary_form):
+    print(audio_path)
+    deck_id = 2059400110
+    deck_name = "Danish"
+    model_id = 1607392319
+    model_name = "Danish with Audio"
 
-    with gr.Row():
-        word_forms_output = gr.JSON(label="Word Forms")
-        sentence_output = gr.Textbox(label="Sentence")
-        pronunciation_output = gr.Audio(label="Pronunciation")
-        flashcards_output = gr.JSON(label="Anki Flashcards")
+    cards = [
+        {
+            "front": f"<div>{danish_word}</div><div>{sentence}</div>",
+            "back": f"<div>{translation}</div><div>{dictionary_form}</div>",
+            "audio_path": audio_path,
+        },
+        {
+            "front": f"<div>{translation}</div>",
+            "back": f"<div>{danish_word}</div><div>{sentence}</div><div>{dictionary_form}</div>",
+            "audio_path": audio_path,
+        },
+    ]
 
-    submit_button.click(
-        ui_function,
-        inputs=[word_input, lang_dropdown],
-        outputs=[
-            word_forms_output,
-            sentence_output,
-            pronunciation_output,
-            flashcards_output,
-        ],
+    output_path = "danish_deck.apkg"
+
+    create_anki_deck(deck_id, deck_name, model_id, model_name, cards, output_path)
+    return save_into_database(
+        danish_word, translation, sentence, audio_path, dictionary_form
     )
 
-app.launch()
+
+# Gradio interface
+with gr.Blocks() as iface:
+    gr.Markdown("# Danish-English Language Learning App")
+    gr.Markdown(
+        "Enter a Danish word to get its English translation, dictionary form, a sample sentence, and pronunciation."
+    )
+
+    with gr.Row():
+        danish_word = gr.Textbox(label="Danish Word")
+        language = gr.Dropdown(
+            choices=languages, value="Danish", label="Source Language"
+        )
+
+    process_btn = gr.Button("Process Word")
+
+    with gr.Column():
+        translation = gr.Textbox(label="Translation")
+        dictionary_form = gr.Textbox(label="Dictionary Form")
+        sentence = gr.Textbox(label="Generated Sentence", interactive=True)
+        audio = gr.Audio(label="Pronunciation")
+        audio_path = gr.Textbox(label="Audio Path", visible=False)
+
+    regenerate_btn = gr.Button("Regenerate Sentence")
+    save_btn = gr.Button("Save to Database")
+    save_result = gr.Textbox(label="Database Save Result")
+
+    def process_and_display(word, lang):
+        trans, sent, audio_file_path, dict_form = process_word(word, language=lang)
+        return trans, dict_form, sent, audio_file_path, audio_file_path
+
+    process_btn.click(
+        process_and_display,
+        inputs=[danish_word, language],
+        outputs=[translation, dictionary_form, sentence, audio, audio_path],
+    )
+
+    regenerate_btn.click(
+        regenerate_sentence, inputs=[danish_word, language], outputs=sentence
+    )
+
+    save_btn.click(
+        save_to_database,
+        inputs=[danish_word, translation, sentence, audio_path, dictionary_form],
+        outputs=save_result,
+    )
+
+if __name__ == "__main__":
+    iface.launch()
