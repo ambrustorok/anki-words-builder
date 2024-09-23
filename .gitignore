@@ -170,3 +170,6 @@ cython_debug/
 *.ogg
 *.wma
 *.m4a
+
+# Anki files
+*.apkg

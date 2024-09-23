@@ -9,7 +9,7 @@ import random
 
 from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
 from chatgpt_tools.tts import get_audio
-from anki_tools.anki_deck_creator import create_anki_deck
+from anki_tools.anki_deck_creator import insert_or_create_anki_deck
 
 load_dotenv()
 client = OpenAI()
@@ -43,7 +43,7 @@ def regenerate_sentence(word, language):
 
 
 def save_to_database(danish_word, translation, sentence, audio_path, dictionary_form):
-    print(audio_path)
+    print(f"Audio path: {audio_path}")
     deck_id = 2059400110
     deck_name = "Danish"
     model_id = 1607392319
@@ -53,21 +53,27 @@ def save_to_database(danish_word, translation, sentence, audio_path, dictionary_
         {
             "front": f"<div>{danish_word}</div><div>{sentence}</div>",
             "back": f"<div>{translation}</div><div>{dictionary_form}</div>",
-            "audio_path": audio_path,
+            "front_audio_path": audio_path,
         },
         {
             "front": f"<div>{translation}</div>",
             "back": f"<div>{danish_word}</div><div>{sentence}</div><div>{dictionary_form}</div>",
-            "audio_path": audio_path,
+            "back_audio_path": audio_path,
         },
     ]
 
-    output_path = "danish_deck.apkg"
+    output_path = os.path.join(os.path.dirname(__file__), "danish_deck.apkg")
 
-    create_anki_deck(deck_id, deck_name, model_id, model_name, cards, output_path)
-    return save_into_database(
-        danish_word, translation, sentence, audio_path, dictionary_form
-    )
+    try:
+        deck = insert_or_create_anki_deck(
+            deck_id, deck_name, model_id, model_name, cards, output_path
+        )
+        print(f"Anki deck operation completed. Deck file: {output_path}")
+        print(f"Cards in deck: {len(deck.notes)}")
+        return f"Data saved successfully. {len(deck.notes)} cards in Anki deck."
+    except Exception as e:
+        print(f"Error creating Anki deck: {e}")
+        return f"Error creating Anki deck: {e}"
 
 
 # Gradio interface
@@ -93,8 +99,8 @@ with gr.Blocks() as iface:
         audio_path = gr.Textbox(label="Audio Path", visible=False)
 
     regenerate_btn = gr.Button("Regenerate Sentence")
-    save_btn = gr.Button("Save to Database")
-    save_result = gr.Textbox(label="Database Save Result")
+    save_btn = gr.Button("Save to Database and Anki")
+    save_result = gr.Textbox(label="Save Result")
 
     def process_and_display(word, lang):
         trans, sent, audio_file_path, dict_form = process_word(word, language=lang)
