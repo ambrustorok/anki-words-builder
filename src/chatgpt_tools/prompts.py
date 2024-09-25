@@ -6,7 +6,10 @@ def translate_word(client, word, source_lang="da", target_lang="en"):
                 "role": "system",
                 "content": f"""You are a translator from {source_lang} to {target_lang}. """,
             },
-            {"role": "user", "content": f"Translate the word: {word}"},
+            {
+                "role": "user",
+                "content": f"Translate the word/phrase: {word}. Return the translation only.",
+            },
         ],
     )
     return response.choices[0].message.content.strip()
@@ -73,7 +76,8 @@ def generate_sentence(client, word, language="en"):
         messages=[
             {
                 "role": "system",
-                "content": f"You are a sentence generator in language {language}.",
+                "content": f"""You are a sentence generator in language {language}. 
+                If you are given a complete sentence, you are welcome to return the original sentence.""",
             },
             {
                 "role": "user",
