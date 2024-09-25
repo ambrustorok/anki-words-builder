@@ -17,6 +17,20 @@ def add_silence(input_file, output_file, silence_duration_sec=0.5):
     sf.write(output_file, new_data, samplerate)
 
 
+def remove_audio_start(input_file, output_file, duration_sec):
+    # Read the audio file
+    data, samplerate = sf.read(input_file)
+
+    # Calculate the number of samples to remove
+    samples_to_remove = int(duration_sec * samplerate)
+
+    # Remove the first x seconds
+    new_data = data[samples_to_remove:]
+
+    # Write the modified audio to the output file
+    sf.write(output_file, new_data, samplerate)
+
+
 def get_audio(
     client, text, lang="da", output_dir="/mnt/d/OneDrive/Projects/data/anki_audio"
 ):
@@ -36,5 +50,6 @@ def get_audio(
     os.makedirs(output_dir, exist_ok=True)
     output_file_path = os.path.join(output_dir, f"audio_{text}.mp3")
     add_silence(temp_audio_path, output_file_path, silence_duration_sec=0)
+    remove_audio_start(temp_audio_path, output_file_path, duration_sec=1.07)
     os.remove(temp_audio_path)
     return output_file_path
