@@ -113,6 +113,11 @@ def delete_card(card_id):
         return f"Error deleting card: {e}"
 
 
+def search_cards(query):
+    deck_manager = get_deck_manager()
+    return deck_manager.search_cards(query)
+
+
 # Gradio interface
 with gr.Blocks() as iface:
     gr.Markdown("# Danish-English Language Learning App")
@@ -141,7 +146,11 @@ with gr.Blocks() as iface:
         save_result = gr.Textbox(label="Save Result")
 
     with gr.Tab("Browse and Edit Cards"):
-        refresh_btn = gr.Button("Refresh Card List")
+        with gr.Row():
+            refresh_btn = gr.Button("Refresh Card List")
+            search_input = gr.Textbox(label="Search Cards")
+            search_btn = gr.Button("Search")
+
         card_list = gr.Dataframe(
             headers=["ID", "Front", "Back", "Front Audio", "Back Audio"],
             label="Existing Cards",
@@ -216,6 +225,9 @@ with gr.Blocks() as iface:
     delete_btn.click(delete_card, inputs=[card_id_input], outputs=edit_result)
 
     export_btn.click(export_deck, outputs=export_result)
+
+    search_btn.click(search_cards, inputs=[search_input], outputs=[card_list])
+
 
 if __name__ == "__main__":
     iface.launch()
