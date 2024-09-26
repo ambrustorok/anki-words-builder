@@ -200,3 +200,19 @@ class AnkiDeckManager:
                 raise Exception(f"No card found with id {card_id}")
         finally:
             self._close_connection()
+
+    def search_cards(self, query):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                """
+                SELECT id, front, back, front_audio, back_audio 
+                FROM cards 
+                WHERE front LIKE ? OR back LIKE ?
+            """,
+                (f"%{query}%", f"%{query}%"),
+            )
+            return cursor.fetchall()
+        finally:
+            self._close_connection()
