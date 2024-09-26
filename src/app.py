@@ -56,8 +56,8 @@ def save_to_database(danish_word, translation, sentence, audio_path, dictionary_
     try:
         deck_manager = get_deck_manager()
         deck_manager.add_card(
-            front=f"<div>{danish_word}</div><div>{sentence}</div>",
-            back=f"<div>{translation}</div><div>{dictionary_form}</div>",
+            front=f"<div>{danish_word}</div>",
+            back=f"<div>{translation}</div><div>{sentence}</div><div>{dictionary_form}</div>",
             front_audio_path=audio_path,
             back_audio_path="",
         )
