@@ -154,3 +154,49 @@ class AnkiDeckManager:
             print(f"Copied {file_path} to {media_folder}")
         except Exception as e:
             print(f"Failed to copy {file_path} to Anki media folder: {e}")
+
+    def get_card_by_id(self, card_id):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT id, front, back, front_audio, back_audio FROM cards WHERE id = ?",
+                (card_id,),
+            )
+            card = cursor.fetchone()
+            if card:
+                return {
+                    "id": card[0],
+                    "front": card[1],
+                    "back": card[2],
+                    "front_audio": card[3],
+                    "back_audio": card[4],
+                }
+            return None
+        finally:
+            self._close_connection()
+
+    def update_card(self, card_id, front, back, front_audio, back_audio):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "UPDATE cards SET front = ?, back = ?, front_audio = ?, back_audio = ? WHERE id = ?",
+                (front, back, front_audio, back_audio, card_id),
+            )
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise Exception(f"No card found with id {card_id}")
+        finally:
+            self._close_connection()
+
+    def delete_card(self, card_id):
+        try:
+            conn = self._get_connection()
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
+            conn.commit()
+            if cursor.rowcount == 0:
+                raise Exception(f"No card found with id {card_id}")
+        finally:
+            self._close_connection()
