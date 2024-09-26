@@ -87,6 +87,32 @@ def get_existing_cards():
     return deck_manager.load_cards_from_db()
 
 
+def load_card(card_id):
+    deck_manager = get_deck_manager()
+    card = deck_manager.get_card_by_id(card_id)
+    if card:
+        return card["front"], card["back"], card["front_audio"], card["back_audio"]
+    return None, None, None, None
+
+
+def update_card(card_id, front, back, front_audio, back_audio):
+    try:
+        deck_manager = get_deck_manager()
+        deck_manager.update_card(card_id, front, back, front_audio, back_audio)
+        return f"Card {card_id} updated successfully."
+    except Exception as e:
+        return f"Error updating card: {e}"
+
+
+def delete_card(card_id):
+    try:
+        deck_manager = get_deck_manager()
+        deck_manager.delete_card(card_id)
+        return f"Card {card_id} deleted successfully."
+    except Exception as e:
+        return f"Error deleting card: {e}"
+
+
 # Gradio interface
 with gr.Blocks() as iface:
     gr.Markdown("# Danish-English Language Learning App")
@@ -114,12 +140,28 @@ with gr.Blocks() as iface:
         save_btn = gr.Button("Save to Database and Anki")
         save_result = gr.Textbox(label="Save Result")
 
-    with gr.Tab("Browse Existing Cards"):
+    with gr.Tab("Browse and Edit Cards"):
         refresh_btn = gr.Button("Refresh Card List")
         card_list = gr.Dataframe(
             headers=["ID", "Front", "Back", "Front Audio", "Back Audio"],
             label="Existing Cards",
         )
+
+        with gr.Row():
+            card_id_input = gr.Number(label="Card ID to Edit", precision=0)
+            load_card_btn = gr.Button("Load Card")
+
+        with gr.Column():
+            edit_front = gr.Textbox(label="Front")
+            edit_back = gr.Textbox(label="Back")
+            edit_front_audio = gr.Textbox(label="Front Audio Path")
+            edit_back_audio = gr.Textbox(label="Back Audio Path")
+
+        with gr.Row():
+            update_btn = gr.Button("Update Card")
+            delete_btn = gr.Button("Delete Card")
+
+        edit_result = gr.Textbox(label="Edit Result")
 
     with gr.Tab("Export Deck"):
         export_btn = gr.Button("Export Anki Deck")
@@ -146,6 +188,33 @@ with gr.Blocks() as iface:
     )
 
     refresh_btn.click(get_existing_cards, outputs=card_list)
+
+    def load_card_to_form(card_id):
+        front, back, front_audio, back_audio = load_card(card_id)
+        if front is not None:
+            return front, back, front_audio, back_audio, ""
+        return "", "", "", "", "Card not found"
+
+    load_card_btn.click(
+        load_card_to_form,
+        inputs=[card_id_input],
+        outputs=[edit_front, edit_back, edit_front_audio, edit_back_audio, edit_result],
+    )
+
+    update_btn.click(
+        update_card,
+        inputs=[
+            card_id_input,
+            edit_front,
+            edit_back,
+            edit_front_audio,
+            edit_back_audio,
+        ],
+        outputs=edit_result,
+    )
+
+    delete_btn.click(delete_card, inputs=[card_id_input], outputs=edit_result)
+
     export_btn.click(export_deck, outputs=export_result)
 
 if __name__ == "__main__":
