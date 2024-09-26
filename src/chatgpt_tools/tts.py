@@ -49,7 +49,8 @@ def get_audio(
 
     os.makedirs(output_dir, exist_ok=True)
     output_file_path = os.path.join(output_dir, f"audio_{text}.mp3")
+    # TODO: make these configurable
     add_silence(temp_audio_path, output_file_path, silence_duration_sec=0)
-    remove_audio_start(temp_audio_path, output_file_path, duration_sec=1.07)
+    # remove_audio_start(temp_audio_path, output_file_path, duration_sec=1.07)
     os.remove(temp_audio_path)
     return output_file_path
