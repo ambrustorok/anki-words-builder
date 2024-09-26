@@ -11,14 +11,29 @@ Anki Words Builder is a tool designed to help you create and manage vocabulary d
 
 ## Installation
 
-To install Anki Words Builder, clone the repository and install the necessary dependencies:
+To install Anki Words Builder, follow these steps:
 
-```bash
-git clone https://github.com/yourusername/anki-words-builder.git
-cd anki-words-builder
-pip install -r requirements.txt
-python app.py
-```
+1. **Clone the Repository**:
+    ```bash
+    git clone https://github.com/ambrustorok/anki-words-builder.git
+    cd anki-words-builder
+    ```
+
+2. **Set Up the Environment File**:
+    Create a `.env` file in the root directory and add the necessary environment variables:
+    ```plaintext
+    OPENAI_API_KEY=your_openai_api_key
+    ```
+
+3. **Install Dependencies**:
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+4. **Run the Application**:
+    ```bash
+    python app.py
+    ```
 
 ## Usage
 
@@ -26,8 +41,6 @@ python app.py
 2. **Edit Words**: Modify existing words and their definitions as needed.
 3. **Delete Words**: Remove words that you no longer need.
 4. **Export Deck**: Export your vocabulary list to an Anki-compatible format.
-
-
 
 ## License
 
