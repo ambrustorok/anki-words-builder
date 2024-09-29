@@ -1,6 +1,5 @@
 # Anki Words Builder
-
-Anki Words Builder is a tool designed to help you create and manage vocabulary decks for Anki, a popular flashcard application. This tool simplifies the process of building and organizing your vocabulary lists, making it easier to study and retain new words.
+Anki Words Builder is a tool designed to help you create and manage vocabulary decks for [Anki](https://apps.ankiweb.net/), a popular flashcard application. This tool simplifies the process of building and organizing your vocabulary lists, making it easier to study and retain new words.
 
 ## Features
 
