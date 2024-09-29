@@ -9,3 +9,30 @@ def string_to_html_div(input_string):
     html_div = f"<div>{html_content}</div>"
 
     return html_div
+
+
+def convert_string_to_html(raw_string):
+    # Convert special HTML characters to their escape sequences
+    escaped_string = (
+        raw_string.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#039;")
+    )
+
+    # Replace newline characters with <br> tags
+    html_string = escaped_string.replace("\n", "<br>\n")
+
+    # Wrap the escaped string in a <div> tag
+    html_output = f"<div>{html_string}</div>"
+
+    return html_output
+
+
+# Example usage
+raw_multiline_string = """This is a test string.
+It contains multiple lines,
+    and indentation."""
+html_output = convert_string_to_html(raw_multiline_string)
+print(html_output)

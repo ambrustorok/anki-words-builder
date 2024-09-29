@@ -11,6 +11,7 @@ import threading
 from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
 from chatgpt_tools.tts import get_audio
 from anki_tools.anki_deck_creator import AnkiDeckManager
+from utils.utils import convert_string_to_html
 
 load_dotenv()
 client = OpenAI()
@@ -42,7 +43,9 @@ def process_word(danish_word, custom_sentence="", language="Danish"):
         if custom_sentence
         else generate_sentence(client, danish_word, language)
     )
-    dictionary_form = dictionarize_word(client, danish_word, language)
+    dictionary_form = convert_string_to_html(
+        dictionarize_word(client, danish_word, language)
+    )
     audio_path = get_audio(client, danish_word, language, output_dir=AUDIO_DIR)
 
     return translation, sentence, audio_path, dictionary_form
@@ -67,9 +70,9 @@ def save_to_database(danish_word, translation, sentence, audio_path, dictionary_
             front_audio_path="",
             back_audio_path=audio_path,
         )
-        return f"Data saved successfully. Card added to the deck."
+        return f'"{danish_word}" saved successfully. Card added to the deck.'
     except Exception as e:
-        return f"Error adding card to deck: {e}"
+        return f'Error adding card "{danish_word}" to deck: {e}'
 
 
 def export_deck():
