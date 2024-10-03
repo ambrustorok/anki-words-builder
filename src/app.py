@@ -138,13 +138,24 @@ with gr.Blocks() as iface:
         process_btn = gr.Button("Process Word")
 
         with gr.Column():
-            translation = gr.Textbox(label="Translation")
-            dictionary_form = gr.Textbox(label="Dictionary Form")
-            sentence = gr.Textbox(label="Generated Sentence", interactive=True)
-            audio = gr.Audio(label="Pronunciation")
+            with gr.Row():
+                translation = gr.Textbox(label="Translation", scale=4)
+                regenerate_translation_btn = gr.Button("Regenerate Translation", scale=1)
+
+            with gr.Row():
+                dictionary_form = gr.Textbox(label="Dictionary Form", scale=4)
+                regenerate_dictionary_btn = gr.Button("Regenerate Dictionary Form", scale=1)
+
+            with gr.Row():
+                sentence = gr.Textbox(label="Generated Sentence", interactive=True, scale=4)
+                regenerate_sentence_btn = gr.Button("Regenerate Sentence", scale=1)
+
+            with gr.Row():
+                audio = gr.Audio(label="Pronunciation", scale=4)
+                regenerate_audio_btn = gr.Button("Regenerate Audio", scale=1)
+
             audio_path = gr.Textbox(label="Audio Path", visible=False)
 
-        regenerate_btn = gr.Button("Regenerate Sentence")
         save_btn = gr.Button("Save to Database and Anki")
         save_result = gr.Textbox(label="Save Result")
 
@@ -189,8 +200,38 @@ with gr.Blocks() as iface:
         outputs=[translation, dictionary_form, sentence, audio, audio_path],
     )
 
-    regenerate_btn.click(
-        regenerate_sentence, inputs=[danish_word, language], outputs=sentence
+    def regenerate_translation(word, lang):
+        return translate_word(client, word, source_lang=lang)
+
+    regenerate_translation_btn.click(
+        regenerate_translation,
+        inputs=[danish_word, language],
+        outputs=translation,
+    )
+
+    def regenerate_dictionary(word, lang):
+        return convert_string_to_html(dictionarize_word(client, word, lang))
+
+    regenerate_dictionary_btn.click(
+        regenerate_dictionary,
+        inputs=[danish_word, language],
+        outputs=dictionary_form,
+    )
+
+    regenerate_sentence_btn.click(
+        regenerate_sentence,
+        inputs=[danish_word, language],
+        outputs=sentence,
+    )
+
+    def regenerate_audio(word, lang):
+        audio_path = get_audio(client, word, lang, output_dir=AUDIO_DIR)
+        return audio_path, audio_path
+
+    regenerate_audio_btn.click(
+        regenerate_audio,
+        inputs=[danish_word, language],
+        outputs=[audio, audio_path],
     )
 
     save_btn.click(
