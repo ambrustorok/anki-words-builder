@@ -15,7 +15,7 @@ def translate_word(client, word, source_lang="da", target_lang="en"):
     return response.choices[0].message.content.strip()
 
 
-def dictionarize_word(client, word, source_lang="da", english_translation=None):
+def dictionarize_word(client, word, source_lang="da"):
     response = client.chat.completions.create(
         model="gpt-3.5-turbo",
         messages=[
@@ -24,11 +24,11 @@ def dictionarize_word(client, word, source_lang="da", english_translation=None):
                 "content": f"""You are a dictionary assistant in lanuage {source_lang}. 
              You will get a word and you have to provide the primitive form of given word and make it look like the way it is in a dictionary.
              Make sure to start by listing the words primitive form!
-             Include plural cases, verb forms, genders, cases and other relevant information.
+             Include plural, verb forms, genders, cases and other relevant information!
+             For verbs, make sure to include all tense forms and participles.
              Use the following template:
              ```
              {{Word}} (Part of Speech)
-                Meaning in English: {{English translation}}
                 Bøjning: {{Inflections}}
                 Udtale: {{Pronunciation}}
                     Additional forms/pronunciation (if applicable): {{Additional Pronunciation}}
@@ -37,7 +37,6 @@ def dictionarize_word(client, word, source_lang="da", english_translation=None):
             Examples using the template:
             ``` 
             være (verbum)
-            Meaning in English: to be
             Bøjning: er, var, -t (talesprogsefterlignende også: vær')
             Udtale: [ˈvεːʌ]
 
@@ -52,7 +51,6 @@ def dictionarize_word(client, word, source_lang="da", english_translation=None):
 
             Åbn overblik
             Vis overblik
-            Meaning in English: dog
             Bøjning: -en, -e, -ene
             Udtale: [ˈhunˀ]
 
@@ -63,7 +61,7 @@ def dictionarize_word(client, word, source_lang="da", english_translation=None):
             },
             {
                 "role": "user",
-                "content": f"Transform the word: {word}. The user wanted to use the following English translation: {english_translation or 'No translation provided.'}",
+                "content": f"Transform the word: {word}.",
             },
         ],
     )
