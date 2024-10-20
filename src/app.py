@@ -139,11 +139,11 @@ with gr.Blocks() as iface:
 
         with gr.Column():
             with gr.Row():
-                translation = gr.Textbox(label="Translation", scale=4)
+                translation = gr.Textbox(label="Translation", interactive=True, scale=4)
                 regenerate_translation_btn = gr.Button("Regenerate Translation", scale=1)
 
             with gr.Row():
-                dictionary_form = gr.Textbox(label="Dictionary Form", scale=4)
+                dictionary_form = gr.Textbox(label="Dictionary Form", interactive=True, scale=4)
                 regenerate_dictionary_btn = gr.Button("Regenerate Dictionary Form", scale=1)
 
             with gr.Row():
@@ -151,7 +151,7 @@ with gr.Blocks() as iface:
                 regenerate_sentence_btn = gr.Button("Regenerate Sentence", scale=1)
 
             with gr.Row():
-                audio = gr.Audio(label="Pronunciation", scale=4)
+                audio = gr.Audio(label="Pronunciation", autoplay=True, scale=4)
                 regenerate_audio_btn = gr.Button("Regenerate Audio", scale=1)
 
             audio_path = gr.Textbox(label="Audio Path", visible=False)
