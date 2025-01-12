@@ -1,29 +1,21 @@
 import gradio as gr
-import os
-import tempfile
-import numpy as np
-import soundfile as sf
 from dotenv import load_dotenv
 from openai import OpenAI
 import random
 import threading
+import tempfile 
 
 from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
-from chatgpt_tools.tts import get_audio
+from chatgpt_tools.tts import generate_audio_binary
 from anki_tools.anki_deck_creator import AnkiDeckManager
 from utils.utils import convert_string_to_html
+import os 
 
 load_dotenv()
 client = OpenAI()
 
 languages = ["Danish", "English"]
-BASE_DIR = "/mnt/d/OneDrive/Projects/data/danish"
-AUDIO_DIR = os.path.join(BASE_DIR, "anki_audio")
-os.makedirs(AUDIO_DIR, exist_ok=True)
-
-DB_PATH = os.path.join(BASE_DIR, "cards.db")
 thread_local = threading.local()
-
 
 def get_deck_manager():
     if not hasattr(thread_local, "deck_manager"):
@@ -31,59 +23,54 @@ def get_deck_manager():
             deck_name="Danish Learning Deck",
             model_id=1607392319,
             model_name="Danish with Audio",
-            db_path=DB_PATH,
+            db_path="not_used"  # This parameter is no longer used with PostgreSQL
         )
     return thread_local.deck_manager
 
-
 def process_word(danish_word, custom_sentence="", language="Danish"):
     translation = translate_word(client, danish_word, source_lang=language)
-    sentence = (
-        custom_sentence
-        if custom_sentence
-        else generate_sentence(client, danish_word, language)
-    )
-    dictionary_form = convert_string_to_html(
-        dictionarize_word(client, danish_word, language)
-    )
-    audio_path = get_audio(client, danish_word, language, output_dir=AUDIO_DIR)
+    sentence = custom_sentence if custom_sentence else generate_sentence(client, danish_word, language)
+    dictionary_form = convert_string_to_html(dictionarize_word(client, danish_word, language))
+    audio_binary = generate_audio_binary(client, f"Læs dette på Dansk: {danish_word}")
+    return translation, sentence, audio_binary, dictionary_form
 
-    return translation, sentence, audio_path, dictionary_form
-
-
-def regenerate_sentence(word, language):
-    return generate_sentence(client, word, language)
-
-
-def save_to_database(danish_word, translation, sentence, audio_path, dictionary_form):
+def save_to_database(danish_word, translation, sentence, audio, dictionary_form):
     try:
+        audio_binary = extract_audio_binary(audio)
         deck_manager = get_deck_manager()
         deck_manager.add_card(
             front=f"<div>{danish_word}</div>",
             back=f"<div>{translation}</div><div>{sentence}</div><div>{dictionary_form}</div>",
-            front_audio_path=audio_path,
-            back_audio_path="",
+            front_audio=audio_binary,
+            back_audio=None
         )
         deck_manager.add_card(
             front=f"<div>{translation}</div>",
             back=f"<div>{danish_word}</div><div>{sentence}</div><div>{dictionary_form}</div>",
-            front_audio_path="",
-            back_audio_path=audio_path,
+            front_audio=None,
+            back_audio=audio_binary
         )
         return f'"{danish_word}" saved successfully. Card added to the deck.'
     except Exception as e:
         return f'Error adding card "{danish_word}" to deck: {e}'
-
-
+    
 def export_deck():
     try:
+        
         deck_manager = get_deck_manager()
-        output_path = os.path.join(BASE_DIR, "danish_deck.apkg")
-        deck_manager.export_to_apkg(output_path)
-        return f"Deck exported successfully to {output_path}"
+        binary_data = deck_manager.export_to_apkg()
+            
+        # Create a temporary file to store the binary data
+        temp_dir = tempfile.mkdtemp()
+        temp_path = os.path.join(temp_dir, "anki_danish_deck.apkg")
+        
+        # Write the binary data to the temporary file
+        with open(temp_path, "wb") as f:
+            f.write(binary_data)
+        
+        return "Your download is ready",  temp_path
     except Exception as e:
-        return f"Error exporting deck: {e}"
-
+        return f"Error exporting deck: {e}", None
 
 def get_existing_cards():
     deck_manager = get_deck_manager()
@@ -98,10 +85,10 @@ def load_card(card_id):
     return None, None, None, None
 
 
-def update_card(card_id, front, back, front_audio, back_audio):
+def update_card(card_id, front, back):
     try:
         deck_manager = get_deck_manager()
-        deck_manager.update_card(card_id, front, back, front_audio, back_audio)
+        deck_manager.update_card(card_id, front, back)
         return f"Card {card_id} updated successfully."
     except Exception as e:
         return f"Error updating card: {e}"
@@ -121,7 +108,41 @@ def search_cards(query):
     return deck_manager.search_cards(query)
 
 
-# Gradio interface
+import numpy as np
+import soundfile as sf
+import io
+def extract_audio_binary(audio_value):
+    """
+    Extract binary audio data from a Gradio audio component value.
+    
+    Args:
+        audio_value: Value from gr.Audio component, can be tuple(sample_rate, data) or str (filepath)
+        
+    Returns:
+        bytes: Binary audio data
+    """
+    if isinstance(audio_value, tuple):
+        # If it's a tuple, it contains (sample_rate, data)
+        sample_rate, data = audio_value
+        
+        # Create an in-memory binary buffer
+        buffer = io.BytesIO()
+        
+        # Write the audio data to the buffer as WAV
+        sf.write(buffer, data, sample_rate, format='WAV')
+        
+        # Get the binary content
+        buffer.seek(0)
+        return buffer.read()
+        
+    elif isinstance(audio_value, str):
+        # If it's a string, it's a file path
+        with open(audio_value, 'rb') as f:
+            return f.read()
+    
+    raise ValueError("Unsupported audio value format")
+
+# Update the Gradio interface
 with gr.Blocks() as iface:
     gr.Markdown("# Danish-English Language Learning App")
     gr.Markdown(
@@ -166,7 +187,7 @@ with gr.Blocks() as iface:
             search_btn = gr.Button("Search")
 
         card_list = gr.Dataframe(
-            headers=["ID", "Front", "Back", "Front Audio", "Back Audio"],
+            headers=["ID", "Front", "Back"],
             label="Existing Cards",
         )
 
@@ -177,8 +198,11 @@ with gr.Blocks() as iface:
         with gr.Column():
             edit_front = gr.Textbox(label="Front")
             edit_back = gr.Textbox(label="Back")
-            edit_front_audio = gr.Textbox(label="Front Audio Path")
-            edit_back_audio = gr.Textbox(label="Back Audio Path")
+            
+            # TODO: Add audio editing
+            # with gr.Row():
+            #     loaded_audio = gr.Audio(label="Pronunciation", autoplay=True, scale=4)
+            #     regenerate_loaded_audio_btn = gr.Button("Regenerate Audio", scale=1)
 
         with gr.Row():
             update_btn = gr.Button("Update Card")
@@ -189,54 +213,33 @@ with gr.Blocks() as iface:
     with gr.Tab("Export Deck"):
         export_btn = gr.Button("Export Anki Deck")
         export_result = gr.Textbox(label="Export Result")
+        export_file_output = gr.File(label="Download exported file")
+
 
     def process_and_display(word, lang):
-        trans, sent, audio_file_path, dict_form = process_word(word, language=lang)
-        return trans, dict_form, sent, audio_file_path, audio_file_path
+        trans, sent, audio_binary, dict_form = process_word(word, language=lang)
+        return trans, dict_form, sent, audio_binary
 
+    def regenerate_audio(word, lang):
+        audio_binary = generate_audio_binary(client, f"Læs dette på {lang}: {word}")
+        return audio_binary
+
+    # Update click handlers
     process_btn.click(
         process_and_display,
         inputs=[danish_word, language],
-        outputs=[translation, dictionary_form, sentence, audio, audio_path],
+        outputs=[translation, dictionary_form, sentence, audio]
     )
-
-    def regenerate_translation(word, lang):
-        return translate_word(client, word, source_lang=lang)
-
-    regenerate_translation_btn.click(
-        regenerate_translation,
-        inputs=[danish_word, language],
-        outputs=translation,
-    )
-
-    def regenerate_dictionary(word, lang):
-        return convert_string_to_html(dictionarize_word(client, word, lang))
-
-    regenerate_dictionary_btn.click(
-        regenerate_dictionary,
-        inputs=[danish_word, language],
-        outputs=dictionary_form,
-    )
-
-    regenerate_sentence_btn.click(
-        regenerate_sentence,
-        inputs=[danish_word, language],
-        outputs=sentence,
-    )
-
-    def regenerate_audio(word, lang):
-        audio_path = get_audio(client, word, lang, output_dir=AUDIO_DIR)
-        return audio_path, audio_path
 
     regenerate_audio_btn.click(
         regenerate_audio,
         inputs=[danish_word, language],
-        outputs=[audio, audio_path],
+        outputs=[audio]
     )
 
     save_btn.click(
         save_to_database,
-        inputs=[danish_word, translation, sentence, audio_path, dictionary_form],
+        inputs=[danish_word, translation, sentence, audio, dictionary_form],
         outputs=save_result,
     )
 
@@ -251,7 +254,7 @@ with gr.Blocks() as iface:
     load_card_btn.click(
         load_card_to_form,
         inputs=[card_id_input],
-        outputs=[edit_front, edit_back, edit_front_audio, edit_back_audio, edit_result],
+        outputs=[edit_front, edit_back, edit_result],
     )
 
     update_btn.click(
@@ -260,15 +263,13 @@ with gr.Blocks() as iface:
             card_id_input,
             edit_front,
             edit_back,
-            edit_front_audio,
-            edit_back_audio,
         ],
         outputs=edit_result,
     )
 
     delete_btn.click(delete_card, inputs=[card_id_input], outputs=edit_result)
 
-    export_btn.click(export_deck, outputs=export_result)
+    export_btn.click(export_deck, outputs=[export_result, export_file_output])
 
     search_btn.click(search_cards, inputs=[search_input], outputs=[card_list])
 

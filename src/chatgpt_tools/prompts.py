@@ -1,6 +1,8 @@
+from setup import openai_model
+
 def translate_word(client, word, source_lang="da", target_lang="en"):
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model=openai_model,
         messages=[
             {
                 "role": "system",
@@ -17,7 +19,7 @@ def translate_word(client, word, source_lang="da", target_lang="en"):
 
 def dictionarize_word(client, word, source_lang="da"):
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model=openai_model,
         messages=[
             {
                 "role": "system",
@@ -70,7 +72,7 @@ def dictionarize_word(client, word, source_lang="da"):
 
 def generate_sentence(client, word, language="en"):
     response = client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model=openai_model,
         messages=[
             {
                 "role": "system",

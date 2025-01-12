@@ -28,11 +28,3 @@ def convert_string_to_html(raw_string):
     html_output = f"<div>{html_string}</div>"
 
     return html_output
-
-
-# Example usage
-raw_multiline_string = """This is a test string.
-It contains multiple lines,
-    and indentation."""
-html_output = convert_string_to_html(raw_multiline_string)
-print(html_output)

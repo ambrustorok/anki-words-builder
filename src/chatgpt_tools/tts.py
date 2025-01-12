@@ -6,12 +6,27 @@ import random
 import re
 import uuid
 
+
+def generate_audio_binary(openai_client, text):
+    voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    selected_voice = random.choice(voices)
+
+    with tempfile.SpooledTemporaryFile() as temp_file:
+        with openai_client.audio.speech.with_streaming_response.create(model="tts-1", voice=selected_voice, input=text) as response:
+            for chunk in response.iter_bytes():
+                temp_file.write(chunk)
+        temp_file.seek(0)
+        audio_binary = temp_file.read()
+    return audio_binary
+
+
 def sanitize_filename(text):
     # Replace special characters with underscores
     sanitized_text = re.sub(r'[^\w\s-]', '_', text)
     # Replace spaces with underscores
     sanitized_text = sanitized_text.replace(' ', '_')
     return sanitized_text
+
 
 def add_silence(input_file, output_file, silence_duration_sec=0.5):
     data, samplerate = sf.read(input_file)
@@ -24,6 +39,7 @@ def add_silence(input_file, output_file, silence_duration_sec=0.5):
     new_data = np.concatenate((silence, data), axis=0)
     sf.write(output_file, new_data, samplerate)
 
+
 def remove_audio_start(input_file, output_file, duration_sec):
     # Read the audio file
     data, samplerate = sf.read(input_file)
@@ -33,6 +49,7 @@ def remove_audio_start(input_file, output_file, duration_sec):
     new_data = data[samples_to_remove:]
     # Write the modified audio to the output file
     sf.write(output_file, new_data, samplerate)
+
 
 def get_audio(
     client, text, lang="da", output_dir="/mnt/d/OneDrive/Projects/data/anki_audio"

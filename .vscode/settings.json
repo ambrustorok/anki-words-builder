@@ -1,0 +1,11 @@
+{
+    "sqltools.connections": [
+        {
+            "previewLimit": 50,
+            "driver": "SQLite",
+            "name": "anki",
+            "database": "C:\\Users\\ambru\\OneDrive\\Projects\\anki-words-builder\\notebooks\\extracted_cards_Danish_Learning_Deck.db"
+        }
+    ],
+    "sqltools.useNodeRuntime": true
+}
