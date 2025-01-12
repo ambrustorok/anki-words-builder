@@ -1,9 +1,13 @@
 import genanki
-import sqlite3
 import os
 import shutil
 import threading
+import psycopg2
+from contextlib import contextmanager
+import tempfile
+import uuid
 
+from setup import openai_model, host, database, user, password, port
 
 class AnkiDeckManager:
     def __init__(self, deck_name, model_id, model_name, db_path):
@@ -12,207 +16,180 @@ class AnkiDeckManager:
         self.model_name = model_name
         self.db_path = db_path
         self.thread_local = threading.local()
+        self._init_db()
 
-        # Ensure the database and table are initialized upon instantiation
-        self._ensure_db_and_table()
-
+    @contextmanager
     def _get_connection(self):
-        if not hasattr(self.thread_local, "connection"):
-            self.thread_local.connection = sqlite3.connect(self.db_path)
-        return self.thread_local.connection
-
-    def _close_connection(self):
-        if hasattr(self.thread_local, "connection"):
-            self.thread_local.connection.close()
-            del self.thread_local.connection
+        conn = psycopg2.connect(
+            host=host,
+            database=database,
+            user=user,
+            password=password,
+            port=port,
+        )
+        try:
+            yield conn
+        finally:
+            conn.close()
 
     def _init_db(self):
-        conn = self._get_connection()
-        cursor = conn.cursor()
-        cursor.execute(
-            """CREATE TABLE IF NOT EXISTS cards (
-                            id INTEGER PRIMARY KEY AUTOINCREMENT,
-                            front TEXT NOT NULL,
-                            back TEXT NOT NULL,
-                            front_audio TEXT,
-                            back_audio TEXT
-                        )"""
-        )
-        conn.commit()
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """CREATE TABLE IF NOT EXISTS cards (
+                        id SERIAL PRIMARY KEY,
+                        front TEXT NOT NULL,
+                        back TEXT NOT NULL,
+                        front_audio BYTEA,
+                        back_audio BYTEA
+                    )"""
+                )
+                conn.commit()
 
-    def _ensure_db_and_table(self):
-        if not os.path.exists(self.db_path):
-            print(f"Database file {self.db_path} does not exist. Creating...")
-        self._init_db()  # Ensure the table exists
 
-    def create_model(self):
-        fields = [
-            {"name": "Front"},
-            {"name": "Back"},
-            {"name": "FrontAudio"},
-            {"name": "BackAudio"},
-        ]
-        templates = [
-            {
-                "name": "Card 1",
-                "qfmt": "{{Front}}<br>{{FrontAudio}}",
-                "afmt": '{{FrontSide}}<hr id="answer">{{Back}}<br>{{BackAudio}}',
-            },
-        ]
-        return genanki.Model(
-            self.model_id, self.model_name, fields=fields, templates=templates
-        )
-
-    def create_deck(self):
-        return genanki.Deck(hash(self.deck_name), self.deck_name)
-
-    def add_card(
-        self, front=None, back=None, front_audio_path=None, back_audio_path=None
-    ):
+    # The add_card method now accepts binary data for audio
+    def add_card(self, front=None, back=None, front_audio=None, back_audio=None):
         front = front or ""
         back = back or ""
-        front_audio_path = front_audio_path or ""
-        back_audio_path = back_audio_path or ""
-
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "INSERT INTO cards (front, back, front_audio, back_audio) VALUES (?, ?, ?, ?)",
-                (front, back, front_audio_path, back_audio_path),
-            )
-            conn.commit()
-        finally:
-            self._close_connection()
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "INSERT INTO cards (front, back, front_audio, back_audio) VALUES (%s, %s, %s, %s)",
+                    (
+                        front, 
+                        back, 
+                        psycopg2.Binary(front_audio) if front_audio else None,
+                        psycopg2.Binary(back_audio) if back_audio else None
+                    )
+                )
+                conn.commit()
 
     def load_cards_from_db(self):
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, front, back, front_audio, back_audio FROM cards")
-            return cursor.fetchall()
-        finally:
-            self._close_connection()
-
-    def save_deck(self, deck, media_files, file_path):
-        package = genanki.Package(deck)
-        package.media_files = media_files
-        package.write_to_file(file_path)
-
-    def export_to_apkg(self, file_path):
-        deck = self.create_deck()
-        media_files = []
-
-        cards = self.load_cards_from_db()
-        for card in cards:
-            front_audio_filename = None
-            back_audio_filename = None
-
-            if card[3]:  # front_audio_path exists
-                front_audio_filename = os.path.basename(card[3])
-                media_files.append(card[3])  # Add full path to media files list
-
-            if card[4]:  # back_audio_path exists
-                back_audio_filename = os.path.basename(card[4])
-                media_files.append(card[4])  # Add full path to media files list
-
-            note = genanki.Note(
-                model=self.create_model(),
-                fields=[
-                    card[1],  # front
-                    card[2],  # back
-                    f"[sound:{front_audio_filename}]" if front_audio_filename else "",
-                    f"[sound:{back_audio_filename}]" if back_audio_filename else "",
-                ],
-            )
-            deck.add_note(note)
-
-        self.save_deck(deck, media_files, file_path)
-        print(f"Deck exported to {file_path} with {len(deck.notes)} cards.")
-
-    def get_windows_username(self):
-        return os.getenv("USERNAME")
-
-    def get_anki_media_folder(self):
-        windows_username = self.get_windows_username()
-        if not windows_username:
-            return None
-        anki_base_dir = f"C:/Users/{windows_username}/AppData/Roaming/Anki2"
-        media_folder = os.path.join(anki_base_dir, "User 1", "collection.media")
-        if not os.path.exists(media_folder):
-            print(f"Anki media folder not found at: {media_folder}")
-            return None
-        return media_folder
-
-    def copy_to_anki_media_folder(self, file_path):
-        media_folder = self.get_anki_media_folder()
-        if not media_folder:
-            print("Anki installation or media folder not found.")
-            return None
-        try:
-            shutil.copy2(file_path, media_folder)
-            print(f"Copied {file_path} to {media_folder}")
-        except Exception as e:
-            print(f"Failed to copy {file_path} to Anki media folder: {e}")
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT id, front, back FROM cards")
+                return cursor.fetchall()
 
     def get_card_by_id(self, card_id):
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "SELECT id, front, back, front_audio, back_audio FROM cards WHERE id = ?",
-                (card_id,),
-            )
-            card = cursor.fetchone()
-            if card:
-                return {
-                    "id": card[0],
-                    "front": card[1],
-                    "back": card[2],
-                    "front_audio": card[3],
-                    "back_audio": card[4],
-                }
-            return None
-        finally:
-            self._close_connection()
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    "SELECT id, front, back, front_audio, back_audio FROM cards WHERE id = %s",
+                    (card_id,)
+                )
+                card = cursor.fetchone()
+                if card:
+                    return {
+                        "id": card[0],
+                        "front": card[1],
+                        "back": card[2],
+                        "front_audio": card[3],
+                        "back_audio": card[4],
+                    }
+                return None
 
-    def update_card(self, card_id, front, back, front_audio, back_audio):
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                "UPDATE cards SET front = ?, back = ?, front_audio = ?, back_audio = ? WHERE id = ?",
-                (front, back, front_audio, back_audio, card_id),
-            )
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise Exception(f"No card found with id {card_id}")
-        finally:
-            self._close_connection()
+    def update_card(self, card_id, front, back):
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """UPDATE cards 
+                    SET front = %s, back = %s 
+                    WHERE id = %s""",
+                    (
+                        front, 
+                        back, 
+                        card_id
+                    )
+                )
+                conn.commit()
+                if cursor.rowcount == 0:
+                    raise Exception(f"No card found with id {card_id}")
 
     def delete_card(self, card_id):
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute("DELETE FROM cards WHERE id = ?", (card_id,))
-            conn.commit()
-            if cursor.rowcount == 0:
-                raise Exception(f"No card found with id {card_id}")
-        finally:
-            self._close_connection()
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("DELETE FROM cards WHERE id = %s", (card_id,))
+                conn.commit()
+                if cursor.rowcount == 0:
+                    raise Exception(f"No card found with id {card_id}")
 
     def search_cards(self, query):
-        try:
-            conn = self._get_connection()
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                SELECT id, front, back, front_audio, back_audio 
-                FROM cards 
-                WHERE front LIKE ? OR back LIKE ?
-            """,
-                (f"%{query}%", f"%{query}%"),
-            )
-            return cursor.fetchall()
-        finally:
-            self._close_connection()
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute(
+                    """SELECT id, front, back 
+                    FROM cards 
+                    WHERE front LIKE %s OR back LIKE %s""",
+                    (f"%{query}%", f"%{query}%")
+                )
+                return cursor.fetchall()
+
+    def export_to_apkg(self):
+        # Create a unique deck ID and model ID
+        deck = genanki.Deck(1607392319, self.deck_name)
+        model = genanki.Model(
+            self.model_id,
+            self.model_name,
+            fields=[
+                {"name": "Front"},
+                {"name": "Back"},
+                {"name": "FrontAudio"},
+                {"name": "BackAudio"},
+            ],
+            templates=[
+                {
+                    "name": "Card 1",
+                    "qfmt": "{{Front}}<br>{{FrontAudio}}",
+                    "afmt": "{{FrontSide}}<hr id='answer'>{{Back}}<br>{{BackAudio}}",
+                },
+            ],
+        )
+
+        package = genanki.Package(deck)
+        media_files = []
+
+        with self._get_connection() as conn:
+            with conn.cursor() as cursor:
+                cursor.execute("SELECT front, back, front_audio, back_audio FROM cards")
+                cards = cursor.fetchall()
+
+                with tempfile.TemporaryDirectory() as temp_dir:
+                    temp_apkg = os.path.join(temp_dir, 'deck.apkg')
+                    for front, back, front_audio, back_audio in cards:
+                        front_audio_tag = ""
+                        back_audio_tag = ""
+
+                        # Handle front audio if exists
+                        if front_audio:
+                            front_audio_filename = f"front_audio_{uuid.uuid4().hex}.mp3"
+                            front_audio_path = os.path.join(temp_dir, front_audio_filename)
+                            with open(front_audio_path, 'wb') as f:
+                                f.write(front_audio)
+                            front_audio_tag = f"[sound:{front_audio_filename}]"
+                            media_files.append(front_audio_path)
+
+                        # Handle back audio if exists
+                        if back_audio:
+                            back_audio_filename = f"back_audio_{uuid.uuid4().hex}.mp3"
+                            back_audio_path = os.path.join(temp_dir, back_audio_filename)
+                            with open(back_audio_path, 'wb') as f:
+                                f.write(back_audio)
+                            back_audio_tag = f"[sound:{back_audio_filename}]"
+                            media_files.append(back_audio_path)
+
+                        note = genanki.Note(
+                            model=model,
+                            fields=[
+                                front,
+                                back,
+                                front_audio_tag,
+                                back_audio_tag,
+                            ]
+                        )
+                        deck.add_note(note)
+
+                    package.media_files = media_files
+                    package.write_to_file(temp_apkg)
+                    
+                    with open(temp_apkg, 'rb') as f:
+                        return f.read()

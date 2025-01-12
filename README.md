@@ -29,6 +29,13 @@ To install Anki Words Builder, follow these steps:
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
+Needed py psycopg2.
+```bash
+    sudo apt install libpq-dev
+    sudo apt install build-essential
+    sudo apt install ffmpeg
+```
+
 3. **Install Dependencies**:
     ```bash
     uv pip sync requirements.txt
