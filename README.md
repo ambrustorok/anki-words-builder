@@ -24,14 +24,19 @@ To install Anki Words Builder, follow these steps:
     OPENAI_API_KEY=your_openai_api_key
     ```
 
+3. Install [uv](https://docs.astral.sh/uv/#getting-started) if you haven't already:
+    ```bash
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    ```
+
 3. **Install Dependencies**:
     ```bash
-    pip install -r requirements.txt
+    uv pip sync requirements.txt
     ```
 
 4. **Run the Application**:
     ```bash
-    python app.py
+    uv run src/app.py
     ```
 
 ## Usage
