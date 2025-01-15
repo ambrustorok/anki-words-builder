@@ -1,46 +1,54 @@
 version: '3.8'
-
 services:
   app:
-    build: 
+    build:
       context: .
       dockerfile: Dockerfile
+    restart: always
     volumes:
-      - ./src:/app/src
+      - /home/pi/app/src:/app/src
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=your_db
-      - DB_HOST=db 
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+      - DB_HOST=db
     env_file:
-      - .env 
+      - .env
     ports:
-      - "7860:7860" 
+      - "7860:7860"
     depends_on:
       - db
     networks:
-      - my_network
-
+      - anki_learner_network
   db:
     image: postgres:latest
+    restart: always
     environment:
-      - POSTGRES_USER=user
-      - POSTGRES_PASSWORD=password
-      - POSTGRES_DB=your_db
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
     ports:
       - "5432:5432"
     volumes:
-      - db_data:/var/lib/postgresql/data
-      - db_files:/files
+      - postgres_data:/var/lib/postgresql/data
+      - postgres_files:/files
     networks:
-      - my_network 
-
+      - anki_learner_network
 volumes:
-  db_data:
-  db_files:
-
+  postgres_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/pi/docker/postgres/data
+  postgres_files:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: /home/pi/docker/postgres/files
 networks:
-  my_network:
-    driver: bridge 
+  anki_learner_network:
+    driver: bridge
