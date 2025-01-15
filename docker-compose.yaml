@@ -5,15 +5,13 @@ services:
       context: .
       dockerfile: Dockerfile
     restart: always
-    volumes:
-      - /home/pi/app/src:/app/src
     environment:
       - PYTHONUNBUFFERED=1
       - PYTHONDONTWRITEBYTECODE=1
       - POSTGRES_USER=${POSTGRES_USER}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
       - POSTGRES_DB=${POSTGRES_DB}
-      - DB_HOST=db
+      - POSTGRES_HOST=db
     env_file:
       - .env
     ports:
