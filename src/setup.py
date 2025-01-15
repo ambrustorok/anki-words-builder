@@ -8,8 +8,8 @@ load_dotenv()
 openai_client = OpenAI()
 openai_model="gpt-4o-mini"
 
-host=os.getenv('DB_HOST', 'localhost')
-database=os.getenv('DB_NAME', "postgres")
-user=os.getenv('DB_USER')
-password=os.getenv('DB_PASSWORD')
-port=os.getenv('DB_PORT', '5432')
+host=os.getenv('POSTGRES_HOST', 'localhost')
+database=os.getenv('POSTGRES_DB', "postgres")
+user=os.getenv('POSTGRES_USER')
+password=os.getenv('POSTGRES_PASSWORD')
+port=os.getenv('POSTGRES_PORT', '5432')
