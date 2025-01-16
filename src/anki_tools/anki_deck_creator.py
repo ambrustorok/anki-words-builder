@@ -6,8 +6,10 @@ import psycopg2
 from contextlib import contextmanager
 import tempfile
 import uuid
+import hashlib
 
 from setup import openai_model, host, database, user, password, port
+
 
 class AnkiDeckManager:
     def __init__(self, deck_name, model_id, model_name, db_path):
@@ -41,26 +43,29 @@ class AnkiDeckManager:
                         front TEXT NOT NULL,
                         back TEXT NOT NULL,
                         front_audio BYTEA,
-                        back_audio BYTEA
+                        back_audio BYTEA,
+                        filename TEXT
                     )"""
                 )
                 conn.commit()
 
-
     # The add_card method now accepts binary data for audio
-    def add_card(self, front=None, back=None, front_audio=None, back_audio=None):
+    def add_card(
+        self, front=None, back=None, front_audio=None, back_audio=None, filename=None
+    ):
         front = front or ""
         back = back or ""
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO cards (front, back, front_audio, back_audio) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO cards (front, back, front_audio, back_audio, filename) VALUES (%s, %s, %s, %s, %s)",
                     (
-                        front, 
-                        back, 
+                        front,
+                        back,
                         psycopg2.Binary(front_audio) if front_audio else None,
-                        psycopg2.Binary(back_audio) if back_audio else None
-                    )
+                        psycopg2.Binary(back_audio) if back_audio else None,
+                        filename,
+                    ),
                 )
                 conn.commit()
 
@@ -74,8 +79,8 @@ class AnkiDeckManager:
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT id, front, back, front_audio, back_audio FROM cards WHERE id = %s",
-                    (card_id,)
+                    "SELECT id, front, back, front_audio, back_audio, filename FROM cards WHERE id = %s",
+                    (card_id,),
                 )
                 card = cursor.fetchone()
                 if card:
@@ -85,6 +90,7 @@ class AnkiDeckManager:
                         "back": card[2],
                         "front_audio": card[3],
                         "back_audio": card[4],
+                        "filename": card[5],
                     }
                 return None
 
@@ -95,11 +101,7 @@ class AnkiDeckManager:
                     """UPDATE cards 
                     SET front = %s, back = %s 
                     WHERE id = %s""",
-                    (
-                        front, 
-                        back, 
-                        card_id
-                    )
+                    (front, back, card_id),
                 )
                 conn.commit()
                 if cursor.rowcount == 0:
@@ -120,7 +122,7 @@ class AnkiDeckManager:
                     """SELECT id, front, back 
                     FROM cards 
                     WHERE front LIKE %s OR back LIKE %s""",
-                    (f"%{query}%", f"%{query}%")
+                    (f"%{query}%", f"%{query}%"),
                 )
                 return cursor.fetchall()
 
@@ -150,29 +152,43 @@ class AnkiDeckManager:
 
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
-                cursor.execute("SELECT front, back, front_audio, back_audio FROM cards")
+                cursor.execute(
+                    "SELECT front, back, front_audio, back_audio, filename FROM cards"
+                )
                 cards = cursor.fetchall()
 
                 with tempfile.TemporaryDirectory() as temp_dir:
-                    temp_apkg = os.path.join(temp_dir, 'deck.apkg')
-                    for front, back, front_audio, back_audio in cards:
+                    temp_apkg = os.path.join(temp_dir, "deck.apkg")
+                    for front, back, front_audio, back_audio, filename in cards:
                         front_audio_tag = ""
                         back_audio_tag = ""
 
                         # Handle front audio if exists
                         if front_audio:
-                            front_audio_filename = f"front_audio_{uuid.uuid4().hex}.mp3"
-                            front_audio_path = os.path.join(temp_dir, front_audio_filename)
-                            with open(front_audio_path, 'wb') as f:
+                            front_audio_filename = (
+                                filename
+                                if filename
+                                else f"front_audio_{uuid.uuid4().hex}.mp3"
+                            )
+                            front_audio_path = os.path.join(
+                                temp_dir, front_audio_filename
+                            )
+                            with open(front_audio_path, "wb") as f:
                                 f.write(front_audio)
                             front_audio_tag = f"[sound:{front_audio_filename}]"
                             media_files.append(front_audio_path)
 
                         # Handle back audio if exists
                         if back_audio:
-                            back_audio_filename = f"back_audio_{uuid.uuid4().hex}.mp3"
-                            back_audio_path = os.path.join(temp_dir, back_audio_filename)
-                            with open(back_audio_path, 'wb') as f:
+                            back_audio_filename = (
+                                filename
+                                if filename
+                                else f"back_audio_{uuid.uuid4().hex}.mp3"
+                            )
+                            back_audio_path = os.path.join(
+                                temp_dir, back_audio_filename
+                            )
+                            with open(back_audio_path, "wb") as f:
                                 f.write(back_audio)
                             back_audio_tag = f"[sound:{back_audio_filename}]"
                             media_files.append(back_audio_path)
@@ -184,12 +200,12 @@ class AnkiDeckManager:
                                 back,
                                 front_audio_tag,
                                 back_audio_tag,
-                            ]
+                            ],
                         )
                         deck.add_note(note)
 
                     package.media_files = media_files
                     package.write_to_file(temp_apkg)
-                    
-                    with open(temp_apkg, 'rb') as f:
+
+                    with open(temp_apkg, "rb") as f:
                         return f.read()

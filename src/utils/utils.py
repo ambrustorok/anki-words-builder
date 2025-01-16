@@ -28,3 +28,10 @@ def convert_string_to_html(raw_string):
     html_output = f"<div>{html_string}</div>"
 
     return html_output
+
+
+def get_read_aloud_text(lang):
+    texts = {
+        "danish": "Læs dette på dansk",
+    }
+    return texts[lang.lower()]
