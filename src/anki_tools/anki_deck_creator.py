@@ -79,29 +79,42 @@ class AnkiDeckManager:
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
-                    "SELECT id, front, back, front_audio, back_audio, filename FROM cards WHERE id = %s",
+                    "SELECT id, front, back, front_audio, back_audio FROM cards WHERE id = %s",
                     (card_id,),
                 )
                 card = cursor.fetchone()
                 if card:
+                    # Convert memoryview to bytes for audio data if present
+                    front_audio = bytes(card[3]) if card[3] is not None else None
+                    back_audio = bytes(card[4]) if card[4] is not None else None
+
                     return {
                         "id": card[0],
                         "front": card[1],
                         "back": card[2],
-                        "front_audio": card[3],
-                        "back_audio": card[4],
-                        "filename": card[5],
+                        "front_audio": front_audio,
+                        "back_audio": back_audio,
                     }
                 return None
 
-    def update_card(self, card_id, front, back):
+    def update_card(
+        self, card_id, front, back, front_audio_binary=None, back_audio_binary=None
+    ):
+        filename = f"{uuid.uuid4().hex}.mp3"
         with self._get_connection() as conn:
             with conn.cursor() as cursor:
                 cursor.execute(
                     """UPDATE cards 
-                    SET front = %s, back = %s 
+                    SET front = %s, back = %s, front_audio = %s, back_audio = %s, filename = %s
                     WHERE id = %s""",
-                    (front, back, card_id),
+                    (
+                        front,
+                        back,
+                        front_audio_binary,
+                        back_audio_binary,
+                        filename,
+                        card_id,
+                    ),
                 )
                 conn.commit()
                 if cursor.rowcount == 0:

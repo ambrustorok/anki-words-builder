@@ -102,10 +102,18 @@ def load_card(card_id):
     return None, None, None, None
 
 
-def update_card(card_id, front, back):
+def update_card(card_id, front, back, front_audio, back_audio):
     try:
+        front_audio_binary = extract_audio_binary(front_audio) if front_audio else None
+        back_audio_binary = extract_audio_binary(back_audio) if back_audio else None
         deck_manager = get_deck_manager()
-        deck_manager.update_card(card_id, front, back)
+        deck_manager.update_card(
+            card_id,
+            front,
+            back,
+            front_audio_binary,
+            back_audio_binary,
+        )
         return f"Card {card_id} updated successfully."
     except Exception as e:
         return f"Error updating card: {e}"
@@ -222,10 +230,21 @@ with gr.Blocks() as iface:
             edit_front = gr.Textbox(label="Front")
             edit_back = gr.Textbox(label="Back")
 
-            # TODO: Add audio editing
-            # with gr.Row():
-            #     loaded_audio = gr.Audio(label="Pronunciation", autoplay=True, scale=4)
-            #     regenerate_loaded_audio_btn = gr.Button("Regenerate Audio", scale=1)
+            with gr.Row():
+                loaded_front_audio = gr.Audio(
+                    label="Pronunciation", autoplay=False, scale=4
+                )
+                regenerate_loaded_front_audio_btn = gr.Button(
+                    "Regenerate Audio", scale=1
+                )
+
+            with gr.Row():
+                loaded_back_audio = gr.Audio(
+                    label="Pronunciation", autoplay=False, scale=4
+                )
+                regenerate_loaded_back_audio_btn = gr.Button(
+                    "Regenerate Audio", scale=1
+                )
 
         with gr.Row():
             update_btn = gr.Button("Update Card")
@@ -259,6 +278,14 @@ with gr.Blocks() as iface:
         regenerate_audio, inputs=[language, danish_word], outputs=[audio]
     )
 
+    regenerate_loaded_front_audio_btn.click(
+        regenerate_audio, inputs=[language, edit_front], outputs=[loaded_front_audio]
+    )
+
+    regenerate_loaded_back_audio_btn.click(
+        regenerate_audio, inputs=[language, edit_back], outputs=[loaded_back_audio]
+    )
+
     save_btn.click(
         save_to_database,
         inputs=[danish_word, translation, sentence, audio, dictionary_form],
@@ -276,7 +303,13 @@ with gr.Blocks() as iface:
     load_card_btn.click(
         load_card_to_form,
         inputs=[card_id_input],
-        outputs=[edit_front, edit_back, edit_result],
+        outputs=[
+            edit_front,
+            edit_back,
+            loaded_front_audio,
+            loaded_back_audio,
+            edit_result,
+        ],
     )
 
     update_btn.click(
@@ -285,6 +318,8 @@ with gr.Blocks() as iface:
             card_id_input,
             edit_front,
             edit_back,
+            loaded_front_audio,
+            loaded_back_audio,
         ],
         outputs=edit_result,
     )
@@ -294,7 +329,6 @@ with gr.Blocks() as iface:
     export_btn.click(export_deck, outputs=[export_result, export_file_output])
 
     search_btn.click(search_cards, inputs=[search_input], outputs=[card_list])
-
 
 if __name__ == "__main__":
     iface.launch(server_name="0.0.0.0", server_port=7860)
