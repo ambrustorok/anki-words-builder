@@ -1,6 +1,7 @@
 import os
 import tempfile
 import numpy as np
+from openai import OpenAI
 import soundfile as sf
 import random
 import re
@@ -11,8 +12,10 @@ def generate_audio_binary(openai_client, text):
     voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
     selected_voice = random.choice(voices)
 
-    with tempfile.SpooledTemporaryFile() as temp_file:
-        with openai_client.audio.speech.with_streaming_response.create(model="tts-1", voice=selected_voice, input=text) as response:
+    with tempfile.SpooledTemporaryFile(suffix=".mp3") as temp_file:
+        with openai_client.audio.speech.with_streaming_response.create(
+            model="tts-1", voice=selected_voice, input=text, response_format="mp3"
+        ) as response:
             for chunk in response.iter_bytes():
                 temp_file.write(chunk)
         temp_file.seek(0)
@@ -22,9 +25,9 @@ def generate_audio_binary(openai_client, text):
 
 def sanitize_filename(text):
     # Replace special characters with underscores
-    sanitized_text = re.sub(r'[^\w\s-]', '_', text)
+    sanitized_text = re.sub(r"[^\w\s-]", "_", text)
     # Replace spaces with underscores
-    sanitized_text = sanitized_text.replace(' ', '_')
+    sanitized_text = sanitized_text.replace(" ", "_")
     return sanitized_text
 
 
@@ -70,7 +73,9 @@ def get_audio(
     os.makedirs(output_dir, exist_ok=True)
     sanitized_text = sanitize_filename(text)
     unique_id = uuid.uuid4().hex
-    output_file_path = os.path.join(output_dir, f"audio_{sanitized_text}_{unique_id}.mp3")
+    output_file_path = os.path.join(
+        output_dir, f"audio_{sanitized_text}_{unique_id}.mp3"
+    )
 
     # Read the audio file
     data, samplerate = sf.read(temp_audio_path)

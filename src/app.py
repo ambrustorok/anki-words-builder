@@ -1,15 +1,18 @@
+import uuid
 import gradio as gr
 from dotenv import load_dotenv
 from openai import OpenAI
 import random
 import threading
-import tempfile 
-
+import tempfile
+import numpy as np
+import soundfile as sf
+import io
 from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
 from chatgpt_tools.tts import generate_audio_binary
 from anki_tools.anki_deck_creator import AnkiDeckManager
-from utils.utils import convert_string_to_html
-import os 
+from utils.utils import convert_string_to_html, get_read_aloud_text
+import os
 
 load_dotenv()
 client = OpenAI()
@@ -17,24 +20,34 @@ client = OpenAI()
 languages = ["Danish", "English"]
 thread_local = threading.local()
 
+
 def get_deck_manager():
     if not hasattr(thread_local, "deck_manager"):
         thread_local.deck_manager = AnkiDeckManager(
             deck_name="Danish Learning Deck",
             model_id=1607392319,
             model_name="Danish with Audio",
-            db_path="not_used"  # This parameter is no longer used with PostgreSQL
+            db_path="not_used",  # This parameter is no longer used with PostgreSQL
         )
     return thread_local.deck_manager
 
-def process_word(danish_word, custom_sentence="", language="Danish"):
-    translation = translate_word(client, danish_word, source_lang=language)
-    sentence = custom_sentence if custom_sentence else generate_sentence(client, danish_word, language)
-    dictionary_form = convert_string_to_html(dictionarize_word(client, danish_word, language))
-    audio_binary = generate_audio_binary(client, f"Læs dette på Dansk: {danish_word}")
+
+def process_word(foreign_word, custom_sentence="", language="Danish"):
+    translation = translate_word(client, foreign_word, source_lang=language)
+    sentence = (
+        custom_sentence
+        if custom_sentence
+        else generate_sentence(client, foreign_word, language)
+    )
+    dictionary_form = convert_string_to_html(
+        dictionarize_word(client, foreign_word, language)
+    )
+    audio_binary = regenerate_audio(language, foreign_word)
     return translation, sentence, audio_binary, dictionary_form
 
+
 def save_to_database(danish_word, translation, sentence, audio, dictionary_form):
+    filename = f"{uuid.uuid4().hex}.mp3"
     try:
         audio_binary = extract_audio_binary(audio)
         deck_manager = get_deck_manager()
@@ -42,35 +55,39 @@ def save_to_database(danish_word, translation, sentence, audio, dictionary_form)
             front=f"<div>{danish_word}</div>",
             back=f"<div>{translation}</div><div>{sentence}</div><div>{dictionary_form}</div>",
             front_audio=audio_binary,
-            back_audio=None
+            back_audio=None,
+            filename=filename,
         )
         deck_manager.add_card(
             front=f"<div>{translation}</div>",
             back=f"<div>{danish_word}</div><div>{sentence}</div><div>{dictionary_form}</div>",
             front_audio=None,
-            back_audio=audio_binary
+            back_audio=audio_binary,
+            filename=filename,
         )
         return f'"{danish_word}" saved successfully. Card added to the deck.'
     except Exception as e:
         return f'Error adding card "{danish_word}" to deck: {e}'
-    
+
+
 def export_deck():
     try:
-        
+
         deck_manager = get_deck_manager()
         binary_data = deck_manager.export_to_apkg()
-            
+
         # Create a temporary file to store the binary data
         temp_dir = tempfile.mkdtemp()
         temp_path = os.path.join(temp_dir, "anki_danish_deck.apkg")
-        
+
         # Write the binary data to the temporary file
         with open(temp_path, "wb") as f:
             f.write(binary_data)
-        
-        return "Your download is ready",  temp_path
+
+        return "Your download is ready", temp_path
     except Exception as e:
         return f"Error exporting deck: {e}", None
+
 
 def get_existing_cards():
     deck_manager = get_deck_manager()
@@ -108,39 +125,37 @@ def search_cards(query):
     return deck_manager.search_cards(query)
 
 
-import numpy as np
-import soundfile as sf
-import io
 def extract_audio_binary(audio_value):
     """
     Extract binary audio data from a Gradio audio component value.
-    
+
     Args:
         audio_value: Value from gr.Audio component, can be tuple(sample_rate, data) or str (filepath)
-        
+
     Returns:
         bytes: Binary audio data
     """
     if isinstance(audio_value, tuple):
         # If it's a tuple, it contains (sample_rate, data)
         sample_rate, data = audio_value
-        
+
         # Create an in-memory binary buffer
         buffer = io.BytesIO()
-        
-        # Write the audio data to the buffer as WAV
-        sf.write(buffer, data, sample_rate, format='WAV')
-        
+
+        # Write the audio data to the buffer as MP3
+        sf.write(buffer, data, sample_rate, format="mp3")
+
         # Get the binary content
         buffer.seek(0)
         return buffer.read()
-        
+
     elif isinstance(audio_value, str):
         # If it's a string, it's a file path
-        with open(audio_value, 'rb') as f:
+        with open(audio_value, "rb") as f:
             return f.read()
-    
+
     raise ValueError("Unsupported audio value format")
+
 
 # Update the Gradio interface
 with gr.Blocks() as iface:
@@ -161,14 +176,22 @@ with gr.Blocks() as iface:
         with gr.Column():
             with gr.Row():
                 translation = gr.Textbox(label="Translation", interactive=True, scale=4)
-                regenerate_translation_btn = gr.Button("Regenerate Translation", scale=1)
+                regenerate_translation_btn = gr.Button(
+                    "Regenerate Translation", scale=1
+                )
 
             with gr.Row():
-                dictionary_form = gr.Textbox(label="Dictionary Form", interactive=True, scale=4)
-                regenerate_dictionary_btn = gr.Button("Regenerate Dictionary Form", scale=1)
+                dictionary_form = gr.Textbox(
+                    label="Dictionary Form", interactive=True, scale=4
+                )
+                regenerate_dictionary_btn = gr.Button(
+                    "Regenerate Dictionary Form", scale=1
+                )
 
             with gr.Row():
-                sentence = gr.Textbox(label="Generated Sentence", interactive=True, scale=4)
+                sentence = gr.Textbox(
+                    label="Generated Sentence", interactive=True, scale=4
+                )
                 regenerate_sentence_btn = gr.Button("Regenerate Sentence", scale=1)
 
             with gr.Row():
@@ -198,7 +221,7 @@ with gr.Blocks() as iface:
         with gr.Column():
             edit_front = gr.Textbox(label="Front")
             edit_back = gr.Textbox(label="Back")
-            
+
             # TODO: Add audio editing
             # with gr.Row():
             #     loaded_audio = gr.Audio(label="Pronunciation", autoplay=True, scale=4)
@@ -215,26 +238,25 @@ with gr.Blocks() as iface:
         export_result = gr.Textbox(label="Export Result")
         export_file_output = gr.File(label="Download exported file")
 
-
-    def process_and_display(word, lang):
+    def process_and_display(lang, word):
         trans, sent, audio_binary, dict_form = process_word(word, language=lang)
         return trans, dict_form, sent, audio_binary
 
-    def regenerate_audio(word, lang):
-        audio_binary = generate_audio_binary(client, f"Læs dette på {lang}: {word}")
+    def regenerate_audio(lang, word):
+        audio_binary = generate_audio_binary(
+            client, f" {get_read_aloud_text(lang)}: {word}"
+        )
         return audio_binary
 
     # Update click handlers
     process_btn.click(
         process_and_display,
-        inputs=[danish_word, language],
-        outputs=[translation, dictionary_form, sentence, audio]
+        inputs=[language, danish_word],
+        outputs=[translation, dictionary_form, sentence, audio],
     )
 
     regenerate_audio_btn.click(
-        regenerate_audio,
-        inputs=[danish_word, language],
-        outputs=[audio]
+        regenerate_audio, inputs=[language, danish_word], outputs=[audio]
     )
 
     save_btn.click(
