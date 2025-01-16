@@ -1,5 +1,6 @@
 from setup import openai_model
 
+
 def translate_word(client, word, source_lang="da", target_lang="en"):
     response = client.chat.completions.create(
         model=openai_model,
