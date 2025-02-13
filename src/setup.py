@@ -6,7 +6,7 @@ from openai import OpenAI
 load_dotenv()
 
 openai_client = OpenAI()
-openai_model="gpt-4o-mini"
+openai_model="gpt-4o"
 
 host=os.getenv('POSTGRES_HOST', 'localhost')
 database=os.getenv('POSTGRES_DB', "postgres")

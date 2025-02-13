@@ -6,21 +6,30 @@ import soundfile as sf
 import random
 import re
 import uuid
+import io
+import pydub
 
 
 def generate_audio_binary(openai_client, text):
-    voices = ["alloy", "echo", "fable", "onyx", "nova", "shimmer"]
+    voices = ["alloy", "ash", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer"]
     selected_voice = random.choice(voices)
-
-    with tempfile.SpooledTemporaryFile(suffix=".mp3") as temp_file:
-        with openai_client.audio.speech.with_streaming_response.create(
-            model="tts-1", voice=selected_voice, input=text, response_format="mp3"
-        ) as response:
-            for chunk in response.iter_bytes():
-                temp_file.write(chunk)
-        temp_file.seek(0)
-        audio_binary = temp_file.read()
-    return audio_binary
+    
+    response = openai_client.audio.speech.create(
+        model="tts-1-hd", voice=selected_voice, input=text, response_format="mp3", speed=1.0
+    )
+    
+    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=True) as temp_file:
+        temp_file.write(response.content)
+        temp_file.flush()
+        
+        # Convert MP3 file to NumPy array, ensuring correct sample rate and mono
+        audio = pydub.AudioSegment.from_file(temp_file.name, format="mp3").set_frame_rate(44100).set_channels(1)
+        samples = np.array(audio.get_array_of_samples(), dtype=np.float32)
+        if audio.channels > 1:
+            samples = samples.reshape((-1, audio.channels)).mean(axis=1)  # Convert stereo to mono
+        samples /= np.iinfo(np.int16).max  # Normalize to range [-1, 1]
+    
+    return (44100, samples)  # 44.1 kHz sample rate for mp3
 
 
 def sanitize_filename(text):

@@ -11,6 +11,7 @@ mkdir -p "${POSTGRES_DIR}/files"
 # Set appropriate permissions
 echo "Setting permissions..."
 chown -R pi:pi "${POSTGRES_DIR}"
+chmod -R 755 "${POSTGRES_DIR}"
 
 # Print summary
 echo -e "\nSetup completed!"

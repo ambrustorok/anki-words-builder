@@ -98,7 +98,12 @@ def load_card(card_id):
     deck_manager = get_deck_manager()
     card = deck_manager.get_card_by_id(card_id)
     if card:
-        return card["front"], card["back"], card["front_audio"], card["back_audio"]
+        return (
+            card["front"], 
+            card["back"], 
+            (44100, card["front_audio"]) if card["front_audio"] is not None else None,
+            (44100, card["back_audio"]) if card["back_audio"] is not None else None
+        )
     return None, None, None, None
 
 

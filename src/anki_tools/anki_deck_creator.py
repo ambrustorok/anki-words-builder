@@ -1,14 +1,13 @@
 import genanki
 import os
-import shutil
 import threading
 import psycopg2
 from contextlib import contextmanager
 import tempfile
 import uuid
-import hashlib
 
-from setup import openai_model, host, database, user, password, port
+from setup import host, database, user, password, port
+from utils import convert_audio_to_numpy
 
 
 class AnkiDeckManager:
@@ -85,8 +84,12 @@ class AnkiDeckManager:
                 card = cursor.fetchone()
                 if card:
                     # Convert memoryview to bytes for audio data if present
-                    front_audio = bytes(card[3]) if card[3] is not None else None
-                    back_audio = bytes(card[4]) if card[4] is not None else None
+                    front_audio_bytes = bytes(card[3]) if card[3] is not None else None
+                    back_audio_bytes = bytes(card[4]) if card[4] is not None else None
+
+                    # Convert audio bytes to numpy array format
+                    front_audio = convert_audio_to_numpy(front_audio_bytes) if front_audio_bytes else None
+                    back_audio = convert_audio_to_numpy(back_audio_bytes) if back_audio_bytes else None
 
                     return {
                         "id": card[0],
@@ -96,7 +99,6 @@ class AnkiDeckManager:
                         "back_audio": back_audio,
                     }
                 return None
-
     def update_card(
         self, card_id, front, back, front_audio_binary=None, back_audio_binary=None
     ):
