@@ -18,53 +18,116 @@ def translate_word(client, word, source_lang="da", target_lang="en"):
     return response.choices[0].message.content.strip()
 
 
-def dictionarize_word(client, word, source_lang="da"):
+def dictionarize_word(client, word_or_sentence, source_lang="en"):
     response = client.chat.completions.create(
         model=openai_model,
         messages=[
             {
                 "role": "system",
-                "content": f"""You are a dictionary assistant in lanuage {source_lang}. 
-             You will get a word and you have to provide the primitive form of given word and make it look like the way it is in a dictionary.
-             Make sure to start by listing the words primitive form!
-             Include plural, verb forms, genders, cases and other relevant information!
-             For verbs, make sure to include all tense forms and participles.
-             Use the following template:
-             ```
-             {{Word}} (Part of Speech)
-                Bøjning: {{Inflections}}
-                Udtale: {{Pronunciation}}
-                    Additional forms/pronunciation (if applicable): {{Additional Pronunciation}}
-                    Oprindelse: {{Origin/etymology}}
-            ```
-            Examples using the template:
-            ``` 
-            være (verbum)
-            Bøjning: er, var, -t (talesprogsefterlignende også: vær')
-            Udtale: [ˈvεːʌ]
+                "content": f"""You are a comprehensive dictionary and grammar assistant for {source_lang}. Analyze the given input and determine if it's a word or sentence. Provide detailed linguistic information using these formats:
 
-                præsens: [ˈæɐ̯]
-                præteritum: [ˈvɑ]
-                præteritum participium: [ˈvεːʌð]
-                vær', i la' vær': [ˈvεɐ̯ˀ]
-                Oprindelse: norrønt vera, vesa, oldengelsk wesan, ikke beslægtet med præsens er, som er indoeuropæisk: norrønt es, er, engelsk is, latin est
-            ```
-            ```
-            hund (substantiv, fælleskøn)
+FOR WORDS:
+```
+{{Word}} ({{Part of Speech}})
+    Base Form: {{primitive/lemma}}
+    Article: {{definite and indefinite articles if applicable}}
+    Gender: {{grammatical gender if applicable}}
+    Pronunciation: {{IPA}}
+    Etymology: {{origin}}
+    
+    Inflections:
+        {{detailed list of all applicable forms}}
+        - Include all article + gender combinations
+        - List all case forms with their articles
+    
+    Variations:
+        {{list of regional/dialectal forms}}
+    
+    Exceptions:
+        {{list of any irregular patterns}}
+    
+    Usage Notes:
+        {{register, collocations, domain}}
+```
 
-            Åbn overblik
-            Vis overblik
-            Bøjning: -en, -e, -ene
-            Udtale: [ˈhunˀ]
+Example for German "Haus":
+```
+Haus (noun, neuter)
+    Base Form: das Haus
+    Article: definite: das, indefinite: ein
+    Gender: neuter
+    Pronunciation: /haʊs/
+    Etymology: Old High German hūs
+    
+    Inflections:
+        Nominative: das Haus (sg), die Häuser (pl)
+        Accusative: das Haus (sg), die Häuser (pl)
+        Dative: dem Haus (sg), den Häusern (pl)
+        Genitive: des Hauses (sg), der Häuser (pl)
+    
+    Variations:
+        Regional: Häusl (Bavarian diminutive)
+        
+    Compounds:
+        Hausarbeit (f), Hausaufgabe (f), Haustür (f)
+    
+    Usage Notes:
+        Register: Standard
+        Common Phrases: zu Hause, nach Hause
+```
 
-                i sammensætning hunde-: [ˈhunə-]
-                Oprindelse: norrønt hundr, tysk Hund, beslægtet med græsk kynos, af uvis oprindelse
-            ```
-             """,
+FOR SENTENCES:
+```
+Sentence Analysis:
+    Original: {{sentence}}
+    
+    Grammatical Structure:
+        - Clause Type: {{main/subordinate/relative etc.}}
+        - Word Order: {{e.g., SVO, SOV, VSO}}
+        - Tense: {{present/past/future etc.}}
+        - Mood: {{indicative/subjunctive/imperative}}
+        - Voice: {{active/passive}}
+    
+    Components:
+        - Subject: {{identify + type}}
+        - Predicate: {{identify + type}}
+        - Objects: {{direct/indirect + type}}
+        - Modifiers: {{adjectives/adverbs + their roles}}
+        - Prepositions: {{list + their functions}}
+    
+    Special Features:
+        - Complex Structures: {{dependent clauses, embedded phrases}}
+        - Idiomatic Elements: {{if any}}
+        - Register: {{formal/informal/colloquial}}
+```
+
+Example for "The cat quickly caught the mouse in the garden":
+```
+Sentence Analysis:
+    Original: The cat quickly caught the mouse in the garden
+    
+    Grammatical Structure:
+        - Clause Type: Simple independent clause
+        - Word Order: SVO
+        - Tense: Past simple
+        - Mood: Indicative
+        - Voice: Active
+    
+    Components:
+        - Subject: "The cat" (definite noun phrase)
+        - Predicate: "caught" (transitive verb)
+        - Direct Object: "the mouse" (definite noun phrase)
+        - Adverbial Modifier: "quickly" (manner)
+        - Prepositional Phrase: "in the garden" (location)
+    
+    Special Features:
+        - Structure: Basic SVO with adverbial and prepositional modifiers
+        - Register: Neutral/standard
+```""",
             },
             {
                 "role": "user",
-                "content": f"Transform the word: {word}.",
+                "content": f"Analyze this: {word_or_sentence}",
             },
         ],
     )
