@@ -39,9 +39,8 @@ def process_word(foreign_word, custom_sentence="", language="Danish"):
         if custom_sentence
         else generate_sentence(client, foreign_word, language)
     )
-    dictionary_form = convert_string_to_html(
-        dictionarize_word(client, foreign_word, language)
-    )
+    dictionary_form = dictionarize_word(client, foreign_word, language)
+
     audio_binary = regenerate_audio(language, foreign_word)
     return translation, sentence, audio_binary, dictionary_form
 
@@ -194,9 +193,21 @@ with gr.Blocks() as iface:
                 )
 
             with gr.Row():
-                dictionary_form = gr.Textbox(
-                    label="Dictionary Form", interactive=True, scale=4
-                )
+                # Keep the main dictionary form textbox for editing
+                with gr.Column(scale=4):
+                    dictionary_form = gr.Textbox(
+                        label="Dictionary Form", interactive=True
+                    )
+
+                    # Add a collapsible interface for the HTML view
+                    with gr.Accordion("HTML Preview", open=False):
+                        dictionary_form_html = gr.HTML()
+
+                    # Update HTML content when dictionary form changes
+                    dictionary_form.change(
+                        lambda x: x, dictionary_form, dictionary_form_html
+                    )
+
                 regenerate_dictionary_btn = gr.Button(
                     "Regenerate Dictionary Form", scale=1
                 )
