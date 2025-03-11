@@ -99,10 +99,10 @@ def load_card(card_id):
     card = deck_manager.get_card_by_id(card_id)
     if card:
         return (
-            card["front"], 
-            card["back"], 
+            card["front"],
+            card["back"],
             (44100, card["front_audio"]) if card["front_audio"] is not None else None,
-            (44100, card["back_audio"]) if card["back_audio"] is not None else None
+            (44100, card["back_audio"]) if card["back_audio"] is not None else None,
         )
     return None, None, None, None
 
@@ -266,6 +266,18 @@ with gr.Blocks() as iface:
         trans, sent, audio_binary, dict_form = process_word(word, language=lang)
         return trans, dict_form, sent, audio_binary
 
+    def regenerate_translation(lang, word):
+        translation = translate_word(client, word, source_lang=lang)
+        return translation
+
+    def regenerate_dictionary_form(lang, word):
+        dictionary_form = convert_string_to_html(dictionarize_word(client, word, lang))
+        return dictionary_form
+
+    def regenerate_sentence(lang, word):
+        sentence = generate_sentence(client, word, lang)
+        return sentence
+
     def regenerate_audio(lang, word):
         audio_binary = generate_audio_binary(
             client, f" {get_read_aloud_text(lang)}: {word}"
@@ -281,6 +293,20 @@ with gr.Blocks() as iface:
 
     regenerate_audio_btn.click(
         regenerate_audio, inputs=[language, danish_word], outputs=[audio]
+    )
+
+    regenerate_translation_btn.click(
+        regenerate_translation, inputs=[language, danish_word], outputs=[translation]
+    )
+
+    regenerate_dictionary_btn.click(
+        regenerate_dictionary_form,
+        inputs=[language, danish_word],
+        outputs=[dictionary_form],
+    )
+
+    regenerate_sentence_btn.click(
+        regenerate_sentence, inputs=[language, danish_word], outputs=[sentence]
     )
 
     regenerate_loaded_front_audio_btn.click(
