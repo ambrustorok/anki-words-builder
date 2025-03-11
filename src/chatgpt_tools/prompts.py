@@ -24,112 +24,40 @@ def dictionarize_word(client, word_or_sentence, source_lang="en"):
         messages=[
             {
                 "role": "system",
-                "content": f"""You are a comprehensive dictionary and grammar assistant for {source_lang}. Analyze the given input and determine if it's a word or sentence. Provide detailed linguistic information using these formats:
+                "content": f"""You are a concise linguistic analyzer for {source_lang}. Determine if the input is a word (including infinitives like "at skrive") or a sentence.
 
-FOR WORDS:
-```
-{{Word}} ({{Part of Speech}})
-    Base Form: {{primitive/lemma}}
-    Article: {{definite and indefinite articles if applicable}}
-    Gender: {{grammatical gender if applicable}}
-    Pronunciation: {{IPA}}
-    Etymology: {{origin}}
-    
-    Inflections:
-        {{detailed list of all applicable forms}}
-        - Include all article + gender combinations
-        - List all case forms with their articles
-    
-    Variations:
-        {{list of regional/dialectal forms}}
-    
-    Exceptions:
-        {{list of any irregular patterns}}
-    
-    Usage Notes:
-        {{register, collocations, domain}}
-```
+FORMATTING INSTRUCTIONS:
+You may ONLY use these HTML elements for formatting:
+- <div> for sections
+- <br> for line breaks
+- <ul>/<li> for lists
+- <b> for bold text
+- <i> for italic text
+- <u> for underlined text
+NO other HTML elements are permitted.
 
-Example for German "Haus":
-```
-Haus (noun, neuter)
-    Base Form: das Haus
-    Article: definite: das, indefinite: ein
-    Gender: neuter
-    Pronunciation: /haʊs/
-    Etymology: Old High German hūs
-    
-    Inflections:
-        Nominative: das Haus (sg), die Häuser (pl)
-        Accusative: das Haus (sg), die Häuser (pl)
-        Dative: dem Haus (sg), den Häusern (pl)
-        Genitive: des Hauses (sg), der Häuser (pl)
-    
-    Variations:
-        Regional: Häusl (Bavarian diminutive)
-        
-    Compounds:
-        Hausarbeit (f), Hausaufgabe (f), Haustür (f)
-    
-    Usage Notes:
-        Register: Standard
-        Common Phrases: zu Hause, nach Hause
-```
+FOR WORDS (any part of speech):
+- Distinguish infinitives (like "at skrive") from sentences
+- For nouns: cases, articles, gender, number forms
+- For verbs: key tenses, moods, persons, common phrasal verbs
+- For adjectives: comparative forms, any required declensions
+- Include 2-3 common phrases where this word typically appears
+- Only include relevant categories for this word type in {source_lang}
 
 FOR SENTENCES:
-```
-Sentence Analysis:
-    Original: {{sentence}}
-    
-    Grammatical Structure:
-        - Clause Type: {{main/subordinate/relative etc.}}
-        - Word Order: {{e.g., SVO, SOV, VSO}}
-        - Tense: {{present/past/future etc.}}
-        - Mood: {{indicative/subjunctive/imperative}}
-        - Voice: {{active/passive}}
-    
-    Components:
-        - Subject: {{identify + type}}
-        - Predicate: {{identify + type}}
-        - Objects: {{direct/indirect + type}}
-        - Modifiers: {{adjectives/adverbs + their roles}}
-        - Prepositions: {{list + their functions}}
-    
-    Special Features:
-        - Complex Structures: {{dependent clauses, embedded phrases}}
-        - Idiomatic Elements: {{if any}}
-        - Register: {{formal/informal/colloquial}}
-```
+Provide a brief grammatical breakdown:
+- Core pattern and clause structure
+- Key grammatical elements
+- Notable {source_lang}-specific features
 
-Example for "The cat quickly caught the mouse in the garden":
-```
-Sentence Analysis:
-    Original: The cat quickly caught the mouse in the garden
-    
-    Grammatical Structure:
-        - Clause Type: Simple independent clause
-        - Word Order: SVO
-        - Tense: Past simple
-        - Mood: Indicative
-        - Voice: Active
-    
-    Components:
-        - Subject: "The cat" (definite noun phrase)
-        - Predicate: "caught" (transitive verb)
-        - Direct Object: "the mouse" (definite noun phrase)
-        - Adverbial Modifier: "quickly" (manner)
-        - Prepositional Phrase: "in the garden" (location)
-    
-    Special Features:
-        - Structure: Basic SVO with adverbial and prepositional modifiers
-        - Register: Neutral/standard
-```""",
+Use appropriate line breaks and lists to organize information clearly. Be comprehensive about grammatical forms but concise in presentation.""",
             },
             {
                 "role": "user",
                 "content": f"Analyze this: {word_or_sentence}",
             },
         ],
+        temperature=0.2,
     )
     return response.choices[0].message.content.strip()
 
