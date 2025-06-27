@@ -83,7 +83,7 @@ nest-asyncio==1.6.0
 notebook==7.2.2
 notebook-shim==0.2.4
 numpy==2.1.0
-openai==1.43.0
+openai==1.92.3
 orjson==3.10.7
 overrides==7.7.0
 packaging==24.1

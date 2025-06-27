@@ -11,13 +11,13 @@ import io
 from chatgpt_tools.prompts import translate_word, generate_sentence, dictionarize_word
 from chatgpt_tools.tts import generate_audio_binary
 from anki_tools.anki_deck_creator import AnkiDeckManager
-from utils.utils import convert_string_to_html, get_read_aloud_text
+from utils.utils import convert_string_to_html
 import os
 
 load_dotenv()
 client = OpenAI()
 
-languages = ["Danish", "English"]
+languages = ["Danish"]
 thread_local = threading.local()
 
 
@@ -290,9 +290,7 @@ with gr.Blocks() as iface:
         return sentence
 
     def regenerate_audio(lang, word):
-        audio_binary = generate_audio_binary(
-            client, f" {get_read_aloud_text(lang)}: {word}"
-        )
+        audio_binary = generate_audio_binary(client, word)
         return audio_binary
 
     # Update click handlers

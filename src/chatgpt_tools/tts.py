@@ -24,12 +24,19 @@ def generate_audio_binary(openai_client, text):
     ]
     selected_voice = random.choice(voices)
 
+    is_sentence = text.count(" ") > 1
+    instructions = (
+        "Speak naturally, as if you're talking to a Danish person in an everyday scenario."
+        if is_sentence else
+        "Speak slowly and clearly, because you're teaching the word to a beginner Danish learner."
+    )
+
     response = openai_client.audio.speech.create(
-        model="tts-1",
+        model="gpt-4o-mini-tts",
         voice=selected_voice,
         input=text,
         response_format="mp3",
-        speed=1.0,
+        instructions=instructions,
     )
 
     with tempfile.NamedTemporaryFile(suffix=".mp3", delete=True) as temp_file:
