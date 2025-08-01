@@ -1,4 +1,3 @@
-version: '3.8'
 services:
   app:
     build:
@@ -40,17 +39,17 @@ services:
 
 volumes:
   postgres_data:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /home/pi/docker/postgres/data
+#    driver: local
+#    driver_opts:
+#      type: none
+#      o: bind
+#      device: /var/lib/postgres/data
   postgres_files:
-    driver: local
-    driver_opts:
-      type: none
-      o: bind
-      device: /home/pi/docker/postgres/files
+#    driver: local
+#    driver_opts:
+#      type: none
+#      o: bind
+#      device: /var/lib/postgres/files
 
 networks:
   anki_learner_network:
