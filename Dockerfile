@@ -24,7 +24,6 @@ RUN pip install --user -e .
 
 # Copy the source directory
 COPY src/ src/
-COPY languages.yml languages.yml
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
