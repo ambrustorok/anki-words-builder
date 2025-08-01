@@ -1,0 +1,24 @@
+_default:
+  prompts:
+    translations: "Generate a translation of this word"
+    dict_form: "Turn this into a dictionary form"
+    dict_form_long: |
+      This is a multiline string example.
+      It provides more detailed instructions
+      for turning something into a dictionary form.
+    sentence: "Generate an example sentence"
+    pronunciation: "Pronounce this in language X with everyday pronunciation"
+    pronunciation_long: "Pronounce this in language X with everyday pronunciation"
+
+languages:
+  Danish:
+    prompts:
+      translations: "Generate a translation of this word"
+      dict_form: "Turn this into a dictionary form"
+      dict_form_long: |
+        This is a multiline string example.
+        It provides more detailed instructions
+        for turning something into a dictionary form.
+      sentence: "Generate an example sentence"
+      pronunciation: "Pronounce this in language X with everyday pronunciation"
+      pronunciation_long: "Pronounce this in language X with everyday pronunciation"
