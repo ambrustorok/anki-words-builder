@@ -20,6 +20,7 @@ from .services import decks as deck_service
 from .services import generation as generation_service
 from .services import exporter as export_service
 from .services import users as user_service
+from .utils.admins import get_auto_admin_emails
 
 load_dotenv()
 
@@ -31,8 +32,9 @@ static_dir = BASE_DIR / "static"
 if static_dir.exists():
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 
-LOCAL_USER_EMAIL = os.getenv("LOCAL_USER_EMAIL", "local_user@example.com")
+LOCAL_USER_EMAIL = os.getenv("LOCAL_USER_EMAIL", "local@example.com")
 ALLOW_LOCAL_USER = os.getenv("ALLOW_LOCAL_USER", "true").lower() in {"1", "true", "yes"}
+ALWAYS_ADMIN_EMAILS = get_auto_admin_emails(LOCAL_USER_EMAIL)
 NATIVE_LANGUAGE_OPTIONS = ["English"]
 TARGET_LANGUAGE_OPTIONS = ["Danish", "Hungarian"]
 def _build_logout_url(request: Request) -> str:
@@ -72,8 +74,14 @@ def get_authenticated_email(request: Request) -> str:
 
 
 def get_current_user(request: Request, email: str = Depends(get_authenticated_email)):
-    user = user_service.ensure_user(email)
+    user = user_service.ensure_user(email, auto_admin_emails=ALWAYS_ADMIN_EMAILS)
     request.state.user = user
+    return user
+
+
+def require_admin(user=Depends(get_current_user)):
+    if not user.get("is_admin"):
+        raise HTTPException(status_code=403, detail="Admin access required.")
     return user
 
 
@@ -200,6 +208,17 @@ def _get_directions_from_form(form, default_if_empty: Optional[list[str]] = None
     return directions
 
 
+def _redirect_with_feedback(path: str, *, msg: Optional[str] = None, error: Optional[str] = None):
+    params: list[str] = []
+    if msg:
+        params.append(f"msg={quote_plus(msg)}")
+    if error:
+        params.append(f"error={quote_plus(error)}")
+    if params:
+        return RedirectResponse(f"{path}?{'&'.join(params)}", status_code=303)
+    return RedirectResponse(path, status_code=303)
+
+
 @app.get("/", response_class=HTMLResponse)
 def dashboard(request: Request, user=Depends(get_current_user)):
     if not _ensure_native_language_set(user):
@@ -262,6 +281,8 @@ def profile(request: Request, user=Depends(get_current_user)):
     api_key_info = api_key_service.get_api_key_summary(user["id"])
     message = request.query_params.get("msg")
     error = request.query_params.get("error")
+    email_message = request.query_params.get("email_msg")
+    email_error = request.query_params.get("email_error")
     emails = user_service.list_user_emails(user["id"])
     return templates.TemplateResponse(
         "profile.html",
@@ -272,6 +293,8 @@ def profile(request: Request, user=Depends(get_current_user)):
             "emails": emails,
             "message": message,
             "error": error,
+            "email_message": email_message,
+            "email_error": email_error,
         },
     )
 
@@ -300,14 +323,19 @@ def add_profile_email(
     request: Request,
     user=Depends(get_current_user),
     email: str = Form(...),
+    make_primary: Optional[str] = Form(None),
 ):
+    make_primary_flag = bool(make_primary)
     try:
-        user_service.add_user_email(user["id"], email)
+        user_service.add_user_email(user["id"], email, make_primary=make_primary_flag)
     except ValueError as exc:
         return RedirectResponse(
-            f"/profile?error={quote_plus(str(exc))}", status_code=303
+            f"/profile?email_error={quote_plus(str(exc))}", status_code=303
         )
-    return RedirectResponse("/profile?msg=Email+added", status_code=303)
+    success = "Email added"
+    if make_primary_flag:
+        success = "Email added and set as primary"
+    return RedirectResponse(f"/profile?email_msg={quote_plus(success)}", status_code=303)
 
 
 @app.post("/profile/emails/{email_id}/delete")
@@ -317,9 +345,9 @@ def remove_profile_email(email_id: str, user=Depends(get_current_user)):
         user_service.remove_user_email(user["id"], email_uuid)
     except ValueError as exc:
         return RedirectResponse(
-            f"/profile?error={quote_plus(str(exc))}", status_code=303
+            f"/profile?email_error={quote_plus(str(exc))}", status_code=303
         )
-    return RedirectResponse("/profile?msg=Email+removed", status_code=303)
+    return RedirectResponse("/profile?email_msg=Email+removed", status_code=303)
 
 
 @app.post("/profile/emails/{email_id}/primary")
@@ -329,15 +357,191 @@ def make_email_primary(email_id: str, user=Depends(get_current_user)):
         user_service.set_primary_email(user["id"], email_uuid)
     except ValueError as exc:
         return RedirectResponse(
-            f"/profile?error={quote_plus(str(exc))}", status_code=303
+            f"/profile?email_error={quote_plus(str(exc))}", status_code=303
         )
-    return RedirectResponse("/profile?msg=Primary+email+updated", status_code=303)
+    return RedirectResponse("/profile?email_msg=Primary+email+updated", status_code=303)
 
 
 @app.post("/profile/delete-account")
 def delete_account(request: Request, user=Depends(get_current_user)):
     user_service.delete_user(user["id"])
     return RedirectResponse(_build_logout_url(request), status_code=303)
+
+
+@app.get("/admin/users", response_class=HTMLResponse)
+def admin_users(request: Request, user=Depends(require_admin)):
+    roster = user_service.list_all_users()
+    message = request.query_params.get("msg")
+    error = request.query_params.get("error")
+    return templates.TemplateResponse(
+        "admin/users.html",
+        {
+            "request": request,
+            "user": user,
+            "users": roster,
+            "message": message,
+            "error": error,
+        },
+    )
+
+
+@app.get("/admin/users/{user_id}", response_class=HTMLResponse)
+def admin_user_detail(request: Request, user_id: str, user=Depends(require_admin)):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    emails = user_service.list_user_emails(user_uuid)
+    message = request.query_params.get("msg")
+    error = request.query_params.get("error")
+    return templates.TemplateResponse(
+        "admin/user_detail.html",
+        {
+            "request": request,
+            "user": user,
+            "managed_user": managed,
+            "emails": emails,
+            "message": message,
+            "error": error,
+            "always_admin_emails": ALWAYS_ADMIN_EMAILS,
+        },
+    )
+
+
+@app.post("/admin/users/{user_id}/delete")
+def admin_delete_user(user_id: str, user=Depends(require_admin)):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    primary = (managed.get("primary_email") or "").lower()
+    if primary and primary in ALWAYS_ADMIN_EMAILS:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error="Cannot delete a protected admin profile.",
+        )
+    user_service.delete_user(user_uuid)
+    return _redirect_with_feedback(
+        "/admin/users",
+        msg="Profile deleted.",
+    )
+
+
+@app.post("/admin/users/{user_id}/emails")
+def admin_add_user_email(
+    user_id: str,
+    user=Depends(require_admin),
+    email: str = Form(...),
+    make_primary: Optional[str] = Form(None),
+):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    try:
+        user_service.add_user_email(user_uuid, email, make_primary=bool(make_primary))
+    except ValueError as exc:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error=str(exc),
+        )
+    message = "Email added."
+    if make_primary:
+        message = "Email added and set as primary."
+    return _redirect_with_feedback(
+        f"/admin/users/{user_id}",
+        msg=message,
+    )
+
+
+@app.post("/admin/users/{user_id}/emails/{email_id}/update")
+def admin_update_user_email(
+    user_id: str,
+    email_id: str,
+    user=Depends(require_admin),
+    new_email: str = Form(...),
+):
+    _ = _parse_uuid(user_id, entity="User")
+    email_uuid = _parse_uuid(email_id, entity="Email")
+    try:
+        user_service.update_user_email(email_uuid, new_email)
+    except ValueError as exc:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error=str(exc),
+        )
+    return _redirect_with_feedback(
+        f"/admin/users/{user_id}",
+        msg="Email updated.",
+    )
+
+
+@app.post("/admin/users/{user_id}/emails/{email_id}/delete")
+def admin_delete_user_email(user_id: str, email_id: str, user=Depends(require_admin)):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    email_uuid = _parse_uuid(email_id, entity="Email")
+    try:
+        user_service.remove_user_email(user_uuid, email_uuid)
+    except ValueError as exc:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error=str(exc),
+        )
+    return _redirect_with_feedback(
+        f"/admin/users/{user_id}",
+        msg="Email removed.",
+    )
+
+
+@app.post("/admin/users/{user_id}/emails/{email_id}/primary")
+def admin_set_primary_email(user_id: str, email_id: str, user=Depends(require_admin)):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    email_uuid = _parse_uuid(email_id, entity="Email")
+    try:
+        user_service.set_primary_email(user_uuid, email_uuid)
+    except ValueError as exc:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error=str(exc),
+        )
+    return _redirect_with_feedback(
+        f"/admin/users/{user_id}",
+        msg="Primary email updated.",
+    )
+
+
+@app.post("/admin/users/{user_id}/admin")
+def admin_toggle_admin(
+    user_id: str,
+    action: str = Form(...),
+    user=Depends(require_admin),
+):
+    user_uuid = _parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    desired_state = None
+    if action == "grant":
+        desired_state = True
+    elif action == "revoke":
+        desired_state = False
+    else:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error="Unknown admin action.",
+        )
+    primary = (managed.get("primary_email") or "").lower()
+    if primary and primary in ALWAYS_ADMIN_EMAILS and not desired_state:
+        return _redirect_with_feedback(
+            f"/admin/users/{user_id}",
+            error="Cannot revoke admin from a protected account.",
+        )
+    user_service.set_admin_status(user_uuid, desired_state)
+    status_text = "Admin access granted." if desired_state else "Admin access revoked."
+    return _redirect_with_feedback(
+        f"/admin/users/{user_id}",
+        msg=status_text,
+    )
 
 
 @app.get("/decks", response_class=HTMLResponse)

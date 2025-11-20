@@ -67,6 +67,9 @@
                     <div class="flex items-center gap-2">
                         <a class="rounded-full border border-slate-200/70 px-4 py-1.5 transition hover:bg-slate-900/10 dark:border-white/20 dark:hover:bg-white/10" href="/">Dashboard</a>
                         <a class="rounded-full border border-slate-200/70 px-4 py-1.5 transition hover:bg-slate-900/10 dark:border-white/20 dark:hover:bg-white/10" href="/decks">Decks</a>
+                        {% if user.is_admin %}
+                            <a class="rounded-full border border-slate-200/70 px-4 py-1.5 transition hover:bg-slate-900/10 dark:border-white/20 dark:hover:bg-white/10" href="/admin/users">Admin</a>
+                        {% endif %}
                     </div>
                     <div class="flex items-center gap-2">
                         <a class="rounded-full border border-slate-200/70 px-4 py-1.5 transition hover:bg-slate-900/10 dark:border-white/20 dark:hover:bg-white/10" href="/profile">Profile</a>
@@ -90,6 +93,9 @@
                             <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Navigate</p>
                             <a class="block rounded-full border border-slate-200/70 px-4 py-2 text-center font-medium transition hover:bg-slate-900/5 dark:border-white/20 dark:hover:bg-white/10" href="/">Dashboard</a>
                             <a class="block rounded-full border border-slate-200/70 px-4 py-2 text-center font-medium transition hover:bg-slate-900/5 dark:border-white/20 dark:hover:bg-white/10" href="/decks">Decks</a>
+                            {% if user.is_admin %}
+                                <a class="block rounded-full border border-slate-200/70 px-4 py-2 text-center font-medium transition hover:bg-slate-900/5 dark:border-white/20 dark:hover:bg-white/10" href="/admin/users">Admin</a>
+                            {% endif %}
                         </div>
                         <div class="space-y-1">
                             <p class="text-[11px] uppercase tracking-[0.2em] text-slate-400 dark:text-slate-500">Account</p>

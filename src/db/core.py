@@ -36,9 +36,13 @@ def init_db():
                     id UUID PRIMARY KEY,
                     native_language TEXT,
                     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                    deleted_at TIMESTAMPTZ
+                    deleted_at TIMESTAMPTZ,
+                    is_admin BOOLEAN NOT NULL DEFAULT FALSE
                 )
                 """
+            )
+            cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS is_admin BOOLEAN NOT NULL DEFAULT FALSE"
             )
             cur.execute(
                 """
