@@ -735,32 +735,31 @@ async def create_card(request: Request, user=Depends(get_current_user)):
     if not payload.get(foreign_field_key):
         return render_form(error="Please provide a foreign phrase to generate from.", status_code=400)
 
-    missing = require_generation()
-    if missing:
-        return missing
+    auto_generate = generation_allowed and client is not None
 
-    try:
-        payload = generation_service.enrich_payload(
-            client,
-            payload,
-            foreign_field_key,
-            deck["target_language"],
-            user.get("native_language") or "English",
-            generation_prompts,
-        )
-    except Exception as err:
-        return render_form(error=f"Generation failed: {err}", status_code=500)
-
-    if audio_bytes is None:
+    if auto_generate:
         try:
-            audio_bytes = generation_service.generate_audio_for_phrase(
+            payload = generation_service.enrich_payload(
                 client,
-                payload.get(foreign_field_key, ""),
-                voice=audio_preferences["voice"],
-                instructions=audio_preferences["instructions"],
+                payload,
+                foreign_field_key,
+                deck["target_language"],
+                user.get("native_language") or "English",
+                generation_prompts,
             )
         except Exception as err:
-            return render_form(error=f"Audio generation failed: {err}", status_code=500)
+            return render_form(error=f"Generation failed: {err}", status_code=500)
+
+        if audio_bytes is None:
+            try:
+                audio_bytes = generation_service.generate_audio_for_phrase(
+                    client,
+                    payload.get(foreign_field_key, ""),
+                    voice=audio_preferences["voice"],
+                    instructions=audio_preferences["instructions"],
+                )
+            except Exception as err:
+                return render_form(error=f"Audio generation failed: {err}", status_code=500)
 
     try:
         card_service.create_cards(
@@ -938,33 +937,32 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
     if not payload.get(foreign_field_key):
         return render_form(error="Please provide a foreign phrase to generate from.", status_code=400)
 
-    missing = require_generation()
-    if missing:
-        return missing
+    auto_generate = generation_allowed and client is not None
 
-    try:
-        payload = generation_service.enrich_payload(
-            client,
-            payload,
-            foreign_field_key,
-            deck["target_language"],
-            user.get("native_language") or "English",
-            generation_prompts,
-        )
-    except Exception as err:
-        return render_form(error=f"Generation failed: {err}", status_code=500)
-
-    if audio_bytes is None:
+    if auto_generate:
         try:
-            audio_bytes = generation_service.generate_audio_for_phrase(
+            payload = generation_service.enrich_payload(
                 client,
-                payload.get(foreign_field_key, ""),
-                voice=audio_preferences["voice"],
-                instructions=audio_preferences["instructions"],
+                payload,
+                foreign_field_key,
+                deck["target_language"],
+                user.get("native_language") or "English",
+                generation_prompts,
             )
-            audio_preview_b64 = _encode_audio_preview(audio_bytes)
         except Exception as err:
-            return render_form(error=f"Audio generation failed: {err}", status_code=500)
+            return render_form(error=f"Generation failed: {err}", status_code=500)
+
+        if audio_bytes is None:
+            try:
+                audio_bytes = generation_service.generate_audio_for_phrase(
+                    client,
+                    payload.get(foreign_field_key, ""),
+                    voice=audio_preferences["voice"],
+                    instructions=audio_preferences["instructions"],
+                )
+                audio_preview_b64 = _encode_audio_preview(audio_bytes)
+            except Exception as err:
+                return render_form(error=f"Audio generation failed: {err}", status_code=500)
 
     try:
         success = card_service.update_card_group(
