@@ -5,7 +5,7 @@ from openai import OpenAI
 from psycopg2.extras import RealDictCursor
 
 from ..db.core import get_connection
-from ..setup import openai_client
+from ..setup import openai_model
 
 
 def _uuid(value: uuid.UUID) -> str:
@@ -64,11 +64,16 @@ def delete_user_api_key(user_id: uuid.UUID, provider: str = "openai"):
         conn.commit()
 
 
+SYSTEM_OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+
+
 def get_openai_client_for_user(user_id: uuid.UUID) -> OpenAI:
     user_key = get_user_api_key(user_id)
     if user_key:
         return OpenAI(api_key=user_key)
-    return openai_client
+    if SYSTEM_OPENAI_KEY:
+        return OpenAI(api_key=SYSTEM_OPENAI_KEY)
+    raise RuntimeError("No OpenAI API key configured. Add one on the profile page.")
 
 
 def get_api_key_summary(user_id: uuid.UUID) -> dict:
