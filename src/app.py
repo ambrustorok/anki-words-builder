@@ -205,14 +205,14 @@ def dashboard(request: Request, user=Depends(get_current_user)):
     if not _ensure_native_language_set(user):
         return RedirectResponse("/onboarding", status_code=302)
 
-    decks = deck_service.list_decks(user["id"])
+    recent_decks = deck_service.list_recent_decks(user["id"], limit=3)
     recent_cards = card_service.list_recent_cards(user["id"], user.get("native_language"), limit=10)
     return templates.TemplateResponse(
         "dashboard.html",
         {
             "request": request,
             "user": user,
-            "decks": decks,
+            "recent_decks": recent_decks,
             "recent_cards": recent_cards,
         },
     )
