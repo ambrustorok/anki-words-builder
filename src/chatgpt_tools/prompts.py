@@ -1,4 +1,4 @@
-from setup import openai_model
+from ..setup import openai_model
 
 
 def translate_word(client, word, source_lang="da", target_lang="en"):

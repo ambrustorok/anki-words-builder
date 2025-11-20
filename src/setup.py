@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 
 load_dotenv()
+openai_model = "gpt5-5.1-chat-latest"
 
 host = os.getenv("POSTGRES_HOST", "localhost")
 database = os.getenv("POSTGRES_DB", "postgres")
