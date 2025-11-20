@@ -5,7 +5,10 @@
     <p class="text-sm uppercase tracking-[0.35em] text-slate-400 dark:text-slate-500">404</p>
     <h2 class="mt-2 text-3xl font-semibold text-slate-900 dark:text-white">We misplaced that page</h2>
     <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
-        The URL you visited isn’t part of Anki Words Builder yet. Use the links below to jump back into the app.
+        We asked our flashcards about <span class="font-semibold text-slate-900 dark:text-white">{{ missing_path or request.url.path }}</span> and they drew a total blank.
+    </p>
+    <p class="mt-2 text-sm text-slate-500 dark:text-slate-400">
+        Maybe it wandered off with the irregular verbs—let's guide you back.
     </p>
     <div class="mt-6 flex flex-wrap justify-center gap-3 text-sm">
         <a class="rounded-full border border-slate-200/80 px-4 py-2 font-semibold text-slate-700 transition hover:bg-slate-900/5 dark:border-white/20 dark:text-white dark:hover:bg-white/10" href="/">Dashboard</a>

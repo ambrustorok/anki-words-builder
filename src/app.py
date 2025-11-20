@@ -85,6 +85,19 @@ def require_admin(user=Depends(get_current_user)):
     return user
 
 
+def _resolve_optional_user(request: Request) -> Optional[dict]:
+    """Best-effort helper used outside normal dependency flow."""
+    try:
+        email = get_authenticated_email(request)
+        user = user_service.ensure_user(email, auto_admin_emails=ALWAYS_ADMIN_EMAILS)
+    except HTTPException:
+        return None
+    except Exception:
+        return None
+    request.state.user = user
+    return user
+
+
 def _ensure_native_language_set(user: dict) -> bool:
     return bool(user.get("native_language"))
 
@@ -780,10 +793,14 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
 
 @app.exception_handler(404)
 async def not_found_handler(request: Request, exc: HTTPException):
+    user = _resolve_optional_user(request)
     return templates.TemplateResponse(
         "404.html",
         {
             "request": request,
+            "user": user,
+            "missing_path": request.url.path,
+            "title": "Page not found",
         },
         status_code=404,
     )
