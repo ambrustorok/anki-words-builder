@@ -13,6 +13,7 @@ Anki Words Builder is a FastAPI-powered language learning companion that helps y
 - **FastAPI + Jinja templates** for a lightweight UI that runs well on Raspberry Pi deployments.
 - **Tailwind-powered UI** for a friendlier grid layout across dashboard, deck management, and the new card form, with automatic light/dark theming that follows your system setting.
 - **Multi-email + data control** so you can link multiple Cloudflare-approved addresses to one account and wipe everything (decks, cards, keys) in a single click when needed.
+- **Admin console + CLI tooling** so protected emails (like `local@example.com`) can audit, edit, or delete any profile and grant admin access from the command line.
 
 ## Installation
 
@@ -29,6 +30,10 @@ To install Anki Words Builder, follow these steps:
     ```plaintext
     OPENAI_API_KEY=your_openai_api_key
     ```
+    Optional overrides:
+    - `LOCAL_USER_EMAIL` (defaults to `local@example.com` for development)
+    - `LOCAL_ALWAYS_ADMIN_EMAIL` (email that must always stay an admin)
+    - `ADDITIONAL_ADMIN_EMAILS` (comma-separated list of extra protected admin emails)
 
 3. Install [uv](https://docs.astral.sh/uv/#getting-started) if you haven't already:
     ```bash
