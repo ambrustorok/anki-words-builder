@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article class="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-white/10 dark:bg-slate-900/60 dark:shadow-black/30">
+    <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">Welcome! Choose your native language</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">We need this to build accurate bilingual prompts and exports.</p>
+    {% if error %}
+        <p class="mt-4 rounded-2xl border border-red-400/40 bg-red-100 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/onboarding" class="mt-6 space-y-4">
+        <label class="block text-sm font-medium text-slate-900 dark:text-white">
+            Native language
+            <select name="native_language" required class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-slate-900 dark:border-white/10 dark:bg-slate-950/60 dark:text-white">
+                <option value="" disabled selected>Select</option>
+                {% for lang in native_languages %}
+                    <option value="{{ lang }}">{{ lang }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <button type="submit" class="inline-flex items-center rounded-full bg-brand px-6 py-3 text-base font-semibold text-slate-900 transition hover:bg-sky-200">Save and continue</button>
+    </form>
+</article>
+{% endblock %}

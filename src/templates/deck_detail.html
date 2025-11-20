@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article class="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-white/10 dark:bg-slate-900/60 dark:shadow-black/30">
+    <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+            <p class="text-xs uppercase tracking-[0.35em] text-slate-500 dark:text-slate-400">Deck</p>
+            <h2 class="text-3xl font-semibold text-slate-900 dark:text-white">{{ deck.name }}</h2>
+            <p class="text-sm text-slate-500 dark:text-slate-400">Target language: <span class="text-slate-900 dark:text-white">{{ deck.target_language }}</span></p>
+            {% if just_saved %}
+                <p class="mt-2 rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-200">New cards saved!</p>
+            {% endif %}
+        </div>
+        <div class="flex flex-wrap gap-3">
+            <a href="/cards/new?deck_id={{ deck.id }}" class="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900 transition hover:bg-sky-200">Add cards</a>
+            <a href="/decks/{{ deck.id }}/edit" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-brand hover:text-slate-900 dark:border-white/20 dark:text-white">Edit deck</a>
+            <a href="/decks/{{ deck.id }}/export" class="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-brand hover:text-slate-900 dark:border-white/20 dark:text-white">Export .apkg</a>
+        </div>
+    </div>
+    <div class="mt-6 grid gap-4 md:grid-cols-2">
+        <details class="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-black/20 dark:text-slate-200">
+            <summary class="cursor-pointer text-slate-900 dark:text-white">Field schema</summary>
+            <pre class="mt-3 overflow-auto rounded-xl bg-white p-3 text-xs text-slate-800 dark:bg-black/40 dark:text-slate-100">{{ deck.field_schema | tojson(indent=2) }}</pre>
+        </details>
+        <details class="rounded-2xl border border-slate-200/80 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-black/20 dark:text-slate-200">
+            <summary class="cursor-pointer text-slate-900 dark:text-white">Generation prompts</summary>
+            <pre class="mt-3 overflow-auto rounded-xl bg-white p-3 text-xs text-slate-800 dark:bg-black/40 dark:text-slate-100">{{ generation_prompts | tojson(indent=2) }}</pre>
+        </details>
+    </div>
+</article>
+
+<section class="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-white/10 dark:bg-slate-900/60 dark:shadow-black/30">
+    <div class="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
+        <h3 class="text-2xl font-semibold text-slate-900 dark:text-white">Entries ({{ entry_count }}) · Cards ({{ card_count }})</h3>
+        <p class="text-sm text-slate-500 dark:text-slate-400">Forward cards show only the foreign phrase on the front; everything else is revealed on the back.</p>
+    </div>
+    {% if cards %}
+        <div class="mt-6 overflow-hidden rounded-2xl border border-slate-200/70 dark:border-white/5">
+            <table class="min-w-full divide-y divide-slate-100 text-sm dark:divide-white/10">
+                <thead class="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-white/5 dark:text-slate-400">
+                    <tr>
+                        <th class="px-4 py-3">Foreign phrase</th>
+                        <th class="px-4 py-3">Translation</th>
+                        <th class="px-4 py-3">Directions</th>
+                        <th class="px-4 py-3">Dictionary</th>
+                        <th class="px-4 py-3">Example sentence</th>
+                        <th class="px-4 py-3">Audio</th>
+                        <th class="px-4 py-3 text-right">Actions</th>
+                    </tr>
+                </thead>
+                <tbody class="divide-y divide-slate-100 dark:divide-white/5">
+                    {% for card in cards %}
+                    <tr class="hover:bg-slate-50 dark:hover:bg-white/5">
+                        <td class="px-4 py-3 font-medium text-slate-900 dark:text-white">{{ card.payload.foreign_phrase or "—" }}</td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ card.payload.native_phrase or "—" }}</td>
+                        <td class="px-4 py-3">
+                            <div class="flex flex-wrap gap-2 text-xs">
+                                {% for direction in card.directions %}
+                                    <span class="rounded-full border border-slate-300 px-2 py-0.5 text-slate-600 dark:border-white/30 dark:text-slate-200">
+                                        {{ direction.direction }}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        </td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ card.payload.dictionary_entry | default("—") | safe }}</td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300">{{ card.payload.example_sentence or "—" }}</td>
+                        <td class="px-4 py-3 text-slate-600 dark:text-slate-300">
+                            {% if card.audio_card %}
+                                <audio controls class="w-40" src="/cards/{{ card.audio_card }}/audio?side={{ card.audio_side }}"></audio>
+                            {% else %}
+                                —
+                            {% endif %}
+                        </td>
+                        <td class="px-4 py-3 text-right">
+                            <div class="flex justify-end gap-3 text-brand">
+                                <a class="hover:underline" href="/cards/{{ card.group_id }}/edit">Edit</a>
+                                <form method="post" action="/cards/{{ card.group_id }}/delete" onsubmit="return confirm('Delete these cards?');">
+                                    <button type="submit" class="text-red-300 hover:underline">Delete</button>
+                                </form>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="mt-6 text-sm text-slate-500 dark:text-slate-400">No cards yet. <a class="text-brand hover:underline" href="/cards/new?deck_id={{ deck.id }}">Add your first card.</a></p>
+    {% endif %}
+</section>
+{% endblock %}

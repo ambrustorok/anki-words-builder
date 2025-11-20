@@ -1,12 +1,18 @@
 # Anki Words Builder
-Anki Words Builder is a tool designed to help you create and manage vocabulary decks for [Anki](https://apps.ankiweb.net/), a popular flashcard application. This tool simplifies the process of building and organizing your vocabulary lists, making it easier to study and retain new words.
+Anki Words Builder is a FastAPI-powered language learning companion that helps you create structured, multi-language decks for [Anki](https://apps.ankiweb.net/). It focuses on storing rich field data (foreign phrase, native phrase, dictionary lookups, etc.) and only formats cards when presenting them to the user or exporting.
 
 ## Features
 
-- **Easy Vocabulary Management**: Add, edit, and delete words and their definitions.
-- **Deck Export**: Export your vocabulary lists to Anki-compatible formats.
-- **Customizable**: Customize the fields and formats according to your needs.
-- **User-Friendly Interface**: Simple and intuitive interface for efficient workflow.
+- **Multi-user, Cloudflare-authenticated access** (via `Cf-Access-Authenticated-User-Email`).
+- **Deck-per-language structure** so prompts stay consistent for each learning language.
+- **Dynamic fields & prompts** stored as JSON so cards can be rendered forward/backward on demand.
+- **Auto-generation** of translations, dictionary entries, example sentences, and TTS audio using OpenAI (per-user API keys supported).
+- **Custom TTS controls** so you can pick one of the OpenAI voices (alloy/ash/ballad/coral/echo/fable/nova/onyx/sage/shimmer or random) and set streaming instructions per card.
+- **Opinionated exports** that output English-front and Foreign-front directions exactly as described (including example sentences, dictionary notes, and audio on the requested side).
+- **Full deck/card CRUD** with inline regeneration of every field, audio previews, and editable per-deck prompt templates.
+- **FastAPI + Jinja templates** for a lightweight UI that runs well on Raspberry Pi deployments.
+- **Tailwind-powered UI** for a friendlier grid layout across dashboard, deck management, and the new card form, with automatic light/dark theming that follows your system setting.
+- **Multi-email + data control** so you can link multiple Cloudflare-approved addresses to one account and wipe everything (decks, cards, keys) in a single click when needed.
 
 ## Installation
 
@@ -43,15 +49,19 @@ Needed py psycopg2.
 
 4. **Run the Application**:
     ```bash
-    uv run src/app.py
+    uv run uvicorn src.app:app --reload --port 8000
     ```
 
 ## Usage
 
-1. **Add Words**: Use the interface to add new words and their definitions.
-2. **Edit Words**: Modify existing words and their definitions as needed.
-3. **Delete Words**: Remove words that you no longer need.
-4. **Export Deck**: Export your vocabulary list to an Anki-compatible format.
+1. **Sign in via Cloudflare** (or use `LOCAL_USER_EMAIL` for offline development).
+2. **Pick your native language** the first time you log in.
+3. **Optionally add your own OpenAI API key** on the Profile page (fallbacks to the server key if configured).
+4. **Create decks** for each target language and configure the fields/prompts you want (including custom generation prompts per deck).
+5. **Add or edit cards** with the new single-input workflow: type only the foreign phrase, click “Generate all fields” to populate translation, dictionary notes, example sentence, and TTS audio, then pick the desired TTS voice/instructions before saving (prompt tweaks live on the deck settings page).
+6. **Browse, edit, and delete cards** inline, then export a deck to `.apkg` whenever you’re ready.
+7. **Browse & export** only the decks you own (sharing + recommendations will arrive in future releases).
+8. **Manage linked emails or delete data** from the Profile page—aliases let multiple Cloudflare identities reuse the same decks, and the danger-zone button wipes everything then signs you out.
 
 ## License
 
@@ -59,4 +69,4 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## Background
 
-This project started as a side project for me to learn Danish. I wanted a tool that could help me efficiently manage and study new vocabulary, and Anki Words Builder was the result.
+This project started as a side project for learning Danish and is gradually evolving into a multi-user deck builder that can grow with new language pairs and collaboration features.
