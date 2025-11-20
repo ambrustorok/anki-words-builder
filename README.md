@@ -67,6 +67,28 @@ Needed py psycopg2.
 6. **Browse, edit, and delete cards** inline, then export a deck to `.apkg` whenever you’re ready.
 7. **Browse & export** only the decks you own (sharing + recommendations will arrive in future releases).
 8. **Manage linked emails or delete data** from the Profile page—aliases let multiple Cloudflare identities reuse the same decks, and the danger-zone button wipes everything then signs you out.
+9. **Admin users** (e.g., `local@example.com`) can open `/admin/users` for a full profile overview, edit any user’s email addresses, delete accounts, or promote more admins directly from the UI or CLI.
+
+## Command-line profile management
+
+The Typer-powered CLI mirrors the admin UI so you can script profile changes without opening the browser:
+
+```bash
+# List every profile (add --admins-only for just admins)
+uv run python -m src.cli users list
+
+# Delete a profile by any linked email (with confirmation)
+uv run python -m src.cli users delete someone@example.com
+
+# Rename an email (and optionally make it primary)
+uv run python -m src.cli users update-email old@example.com new@example.com --set-primary
+
+# Add or promote admins
+uv run python -m src.cli users grant-admin teammate@example.com
+uv run python -m src.cli users revoke-admin teammate@example.com
+```
+
+Additional helpers (`users add-email`, etc.) are available via `uv run python -m src.cli --help`.
 
 ## License
 
