@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import tempfile
 import uuid
 
-from setup import host, database, user, password, port
+from ..setup import host, database, user, password, port
 from utils import convert_audio_to_numpy
 
 

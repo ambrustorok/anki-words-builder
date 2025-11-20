@@ -17,7 +17,7 @@ RUN apt-get update && apt-get install -y \
 # Install dependencies
 COPY pyproject.toml .
 COPY uv.lock .
-RUN pip install --user -e .
+RUN uv pip install --system -e .
 
 # Copy the source directory
 COPY src/ src/
@@ -28,4 +28,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 
 # Command to run the application
-CMD ["uv", "run", "src/app.py"]
+CMD ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]

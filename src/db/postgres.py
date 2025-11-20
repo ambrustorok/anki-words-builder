@@ -1,22 +1,6 @@
-import gradio as gr
-import os
-import tempfile
-import numpy as np
-import soundfile as sf
-import os
-from dotenv import load_dotenv
-from openai import OpenAI
-import random
-import os
-import uuid
-import random
-import tempfile
 import psycopg2
-import genanki
-import soundfile as sf
-import re
 
-from setup import openai_model, host, database, user, password, port
+from ..setup import database, host, password, port, user
 
 
 def save_audio_to_postgres(text, audio_binary):
@@ -35,8 +19,10 @@ def save_audio_to_postgres(text, audio_binary):
             audio_data BYTEA
         )"""
     )
-    cur.execute("INSERT INTO audio_files (text, audio_data) VALUES (%s, %s)", 
-                (text, psycopg2.Binary(audio_binary)))
+    cur.execute(
+        "INSERT INTO audio_files (text, audio_data) VALUES (%s, %s)",
+        (text, psycopg2.Binary(audio_binary)),
+    )
     conn.commit()
     cur.close()
     conn.close()
