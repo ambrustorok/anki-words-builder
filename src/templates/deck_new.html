@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+
+{% block content %}
+<article class="rounded-3xl border border-slate-200/80 bg-white p-6 shadow-xl shadow-slate-200/60 dark:border-white/10 dark:bg-slate-900/60 dark:shadow-black/30">
+    <h2 class="text-2xl font-semibold text-slate-900 dark:text-white">Create a new deck</h2>
+    <p class="mt-1 text-sm text-slate-500 dark:text-slate-400">One deck per target language keeps prompts consistent and exports predictable.</p>
+    {% if error %}
+        <p class="mt-4 rounded-2xl border border-red-400/40 bg-red-100 px-4 py-3 text-sm font-medium text-red-800 dark:border-red-400/30 dark:bg-red-500/10 dark:text-red-200">{{ error }}</p>
+    {% endif %}
+
+    <form method="post" action="/decks" class="mt-6 space-y-4">
+        <label class="block text-sm font-medium text-slate-900 dark:text-white">
+            Deck name
+            <input type="text" name="name" required placeholder="e.g. Danish conversations" class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-slate-900 placeholder-slate-400 dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder-slate-500">
+        </label>
+        <label class="block text-sm font-medium text-slate-900 dark:text-white">
+            Target language
+            <select name="target_language" required class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-slate-900 dark:border-white/10 dark:bg-slate-950/60 dark:text-white">
+                <option value="" disabled selected>Select</option>
+                {% for lang in target_languages %}
+                    <option value="{{ lang }}">{{ lang }}</option>
+                {% endfor %}
+            </select>
+        </label>
+        <label class="block text-sm font-medium text-slate-900 dark:text-white">
+            Field schema (optional JSON override)
+            <textarea name="field_schema_json" rows="6" placeholder='{{ default_schema | tojson }}' class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-4 py-3 text-sm text-slate-900 placeholder-slate-400 dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder-slate-500"></textarea>
+        </label>
+        <button type="submit" class="inline-flex items-center rounded-full bg-brand px-6 py-3 text-base font-semibold text-slate-900 transition hover:bg-sky-200">Create deck</button>
+    </form>
+
+    <details class="mt-6 rounded-2xl border border-slate-200/80 bg-slate-50 p-4 text-sm text-slate-700 dark:border-white/10 dark:bg-black/30 dark:text-slate-200">
+        <summary class="cursor-pointer text-slate-900 dark:text-white">Default field schema</summary>
+        <pre class="mt-3 overflow-auto rounded-xl bg-white p-4 text-xs text-slate-800 dark:bg-black/40 dark:text-slate-100">{{ default_schema | tojson(indent=2) }}</pre>
+    </details>
+</article>
+{% endblock %}
