@@ -145,6 +145,7 @@ def _card_form_context(
     form_action: Optional[str] = None,
     submit_label: str = "Save cards",
     audio_preferences: Optional[dict] = None,
+    generation_enabled: bool = True,
 ):
     context = {
         "request": request,
@@ -161,6 +162,7 @@ def _card_form_context(
         "submit_label": submit_label,
         "audio_preferences": audio_preferences or _default_audio_preferences(),
         "audio_voice_options": ["random"] + AUDIO_VOICES,
+        "generation_disabled": not generation_enabled,
     }
     return context
 
@@ -554,6 +556,7 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
     audio_preferences = _default_audio_preferences()
+    generation_allowed = api_key_service.user_can_generate(user["id"])
     return templates.TemplateResponse(
         "card_form.html",
         _card_form_context(
@@ -566,6 +569,7 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
             form_action="/cards",
             submit_label="Save cards",
             audio_preferences=audio_preferences,
+            generation_enabled=generation_allowed,
         ),
     )
 
@@ -587,10 +591,11 @@ async def create_card(request: Request, user=Depends(get_current_user)):
     audio_preview_b64 = form.get("audio_preview_b64", "")
     audio_bytes = _decode_audio_preview(audio_preview_b64)
     submit_action = form.get("submit_action", "save")
-    client = api_key_service.get_openai_client_for_user(user["id"])
-    base_prompts = deck_service.get_generation_prompts(deck)
-    generation_prompts = base_prompts
-    audio_preferences = _audio_preferences_from_form(form)
+    generation_allowed = api_key_service.user_can_generate(user["id"])
+    client = (
+        api_key_service.get_openai_client_for_user(user["id"]) if generation_allowed else None
+    )
+    generation_prompts = deck_service.get_generation_prompts(deck)
     audio_preferences = _audio_preferences_from_form(form)
 
     if not foreign_field_key:
@@ -612,6 +617,7 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 form_action="/cards",
                 submit_label="Save cards",
                 audio_preferences=audio_preferences,
+                generation_enabled=generation_allowed,
             ),
             status_code=status_code,
         )
@@ -620,7 +626,18 @@ async def create_card(request: Request, user=Depends(get_current_user)):
         if not payload.get(foreign_field_key):
             return render_form(error="Please enter a foreign phrase first.", status_code=400)
 
+    def require_generation():
+        if not generation_allowed or client is None:
+            return render_form(
+                error="Add an OpenAI API key on your profile before generating fields.",
+                status_code=400,
+            )
+        return None
+
     if submit_action == "regen_native_phrase":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -635,6 +652,9 @@ async def create_card(request: Request, user=Depends(get_current_user)):
             return render_form(error=str(err), status_code=400)
         return render_form(info="Translation updated.")
     elif submit_action == "regen_dictionary_entry":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -649,6 +669,9 @@ async def create_card(request: Request, user=Depends(get_current_user)):
             return render_form(error=str(err), status_code=400)
         return render_form(info="Dictionary entry updated.")
     elif submit_action == "regen_example_sentence":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -663,6 +686,9 @@ async def create_card(request: Request, user=Depends(get_current_user)):
             return render_form(error=str(err), status_code=400)
         return render_form(info="Example sentence updated.")
     elif submit_action == "regen_audio":
+        missing = require_generation()
+        if missing:
+            return missing
         if not payload.get(foreign_field_key):
             return render_form(error="Enter a foreign phrase before generating audio.", status_code=400)
         try:
@@ -677,6 +703,9 @@ async def create_card(request: Request, user=Depends(get_current_user)):
             return render_form(error=f"Audio generation failed: {err}", status_code=500)
         return render_form(info="Audio regenerated.")
     elif submit_action == "populate_all":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             payload = generation_service.enrich_payload(
                 client,
@@ -705,6 +734,10 @@ async def create_card(request: Request, user=Depends(get_current_user)):
 
     if not payload.get(foreign_field_key):
         return render_form(error="Please provide a foreign phrase to generate from.", status_code=400)
+
+    missing = require_generation()
+    if missing:
+        return missing
 
     try:
         payload = generation_service.enrich_payload(
@@ -754,6 +787,7 @@ def edit_card(request: Request, group_id: str, user=Depends(get_current_user)):
     payload = group["payload"]
     audio_preview_b64 = _encode_audio_preview(group["audio"])
     directions = [row["direction"] for row in group["rows"]]
+    generation_allowed = api_key_service.user_can_generate(user["id"])
     return templates.TemplateResponse(
         "card_form.html",
         _card_form_context(
@@ -767,6 +801,7 @@ def edit_card(request: Request, group_id: str, user=Depends(get_current_user)):
             form_action=f"/cards/{group_id}",
             submit_label="Save changes",
             audio_preferences=_default_audio_preferences(),
+            generation_enabled=generation_allowed,
         ),
     )
 
@@ -785,7 +820,10 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
     audio_preview_b64 = form.get("audio_preview_b64", "")
     audio_bytes = _decode_audio_preview(audio_preview_b64) or group["audio"]
     submit_action = form.get("submit_action", "save")
-    client = api_key_service.get_openai_client_for_user(user["id"])
+    generation_allowed = api_key_service.user_can_generate(user["id"])
+    client = (
+        api_key_service.get_openai_client_for_user(user["id"]) if generation_allowed else None
+    )
     generation_prompts = deck_service.get_generation_prompts(deck)
     audio_preferences = _audio_preferences_from_form(form)
     selected_directions = _get_directions_from_form(form, default_if_empty=None)
@@ -811,6 +849,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 form_action=f"/cards/{group_id}",
                 submit_label="Save changes",
                 audio_preferences=audio_preferences,
+                generation_enabled=generation_allowed,
             ),
             status_code=status_code,
         )
@@ -819,7 +858,18 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
         if not payload.get(foreign_field_key):
             return render_form(error="Please enter a foreign phrase first.", status_code=400)
 
+    def require_generation():
+        if not generation_allowed or client is None:
+            return render_form(
+                error="Add an OpenAI API key on your profile before generating fields.",
+                status_code=400,
+            )
+        return None
+
     if submit_action == "regen_native_phrase":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -834,6 +884,9 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
             return render_form(error=str(err), status_code=400)
         return render_form(info="Translation updated.")
     elif submit_action == "regen_dictionary_entry":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -848,6 +901,9 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
             return render_form(error=str(err), status_code=400)
         return render_form(info="Dictionary entry updated.")
     elif submit_action == "regen_example_sentence":
+        missing = require_generation()
+        if missing:
+            return missing
         try:
             generation_service.regenerate_field(
                 client,
@@ -862,6 +918,9 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
             return render_form(error=str(err), status_code=400)
         return render_form(info="Example sentence updated.")
     elif submit_action == "regen_audio":
+        missing = require_generation()
+        if missing:
+            return missing
         if not payload.get(foreign_field_key):
             return render_form(error="Enter a foreign phrase before generating audio.", status_code=400)
         try:
@@ -878,6 +937,10 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
 
     if not payload.get(foreign_field_key):
         return render_form(error="Please provide a foreign phrase to generate from.", status_code=400)
+
+    missing = require_generation()
+    if missing:
+        return missing
 
     try:
         payload = generation_service.enrich_payload(
