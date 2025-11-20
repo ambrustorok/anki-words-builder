@@ -36,6 +36,9 @@
     </script>
 </head>
 <body class="min-h-full bg-slate-50 font-sans text-slate-900 transition dark:bg-slate-950 dark:text-slate-100">
+    {% if user is not defined or user is none %}
+        {% set user = {'primary_email': 'Guest', 'native_language': None, 'is_admin': False} %}
+    {% endif %}
     <div class="min-h-screen">
         <header class="border-b border-slate-200/60 bg-white/80 backdrop-blur dark:border-white/10 dark:bg-slate-900/80">
             <div class="mx-auto flex w-full max-w-7xl flex-col gap-5 px-4 py-4 sm:px-6 sm:py-5">
