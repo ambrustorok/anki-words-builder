@@ -574,6 +574,17 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
     )
 
 
+@app.exception_handler(404)
+async def not_found_handler(request: Request, exc: HTTPException):
+    return templates.TemplateResponse(
+        "404.html",
+        {
+            "request": request,
+        },
+        status_code=404,
+    )
+
+
 @app.post("/cards")
 async def create_card(request: Request, user=Depends(get_current_user)):
     form = await request.form()
