@@ -177,7 +177,7 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                 """
                 INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates)
                 VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at
+                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at
                 """,
                 (
                     _uuid(deck_id),
@@ -211,13 +211,18 @@ def list_decks(owner_id: uuid.UUID) -> List[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.created_at,
+                       d.updated_at,
+                       GREATEST(
+                           d.updated_at,
+                           COALESCE(MAX(c.updated_at), d.updated_at)
+                       ) AS last_modified_at,
                        COALESCE(COUNT(c.id), 0) AS card_count,
                        COALESCE(COUNT(DISTINCT c.card_group_id), 0) AS entry_count
                 FROM decks d
                 LEFT JOIN cards c ON c.deck_id = d.id AND c.owner_id = %s
                 WHERE d.owner_id = %s
                 GROUP BY d.id
-                ORDER BY d.created_at DESC
+                ORDER BY last_modified_at DESC
                 """,
                 (_uuid(owner_id), _uuid(owner_id)),
             )
@@ -238,9 +243,13 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.created_at,
+                       d.updated_at,
                        COALESCE(COUNT(c.id), 0) AS card_count,
                        COALESCE(COUNT(DISTINCT c.card_group_id), 0) AS entry_count,
-                       COALESCE(MAX(c.created_at), d.created_at) AS last_modified_at
+                       GREATEST(
+                           d.updated_at,
+                           COALESCE(MAX(c.updated_at), d.updated_at)
+                       ) AS last_modified_at
                 FROM decks d
                 LEFT JOIN cards c ON c.deck_id = d.id AND c.owner_id = %s
                 WHERE d.owner_id = %s
@@ -266,7 +275,8 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
-                       d.created_at
+                       d.created_at,
+                       d.updated_at
                 FROM decks d
                 WHERE d.id = %s AND d.owner_id = %s
                 """,
@@ -310,9 +320,10 @@ def update_deck(owner_id: uuid.UUID, deck_id: uuid.UUID, *, name: str, target_la
                 UPDATE decks
                 SET name = %s,
                     target_language = %s,
-                    field_schema = %s
+                    field_schema = %s,
+                    updated_at = NOW()
                 WHERE id = %s AND owner_id = %s
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at
+                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at
                 """,
                 (name.strip(), target_language.strip(), Json(schema), _uuid(deck_id), _uuid(owner_id)),
             )
@@ -324,7 +335,8 @@ def update_deck(owner_id: uuid.UUID, deck_id: uuid.UUID, *, name: str, target_la
                 cur.execute(
                     """
                     UPDATE decks
-                    SET prompt_templates = %s
+                    SET prompt_templates = %s,
+                        updated_at = NOW()
                     WHERE id = %s AND owner_id = %s
                     """,
                     (Json(prompts), _uuid(deck_id), _uuid(owner_id)),

@@ -141,6 +141,7 @@ def list_recent_cards(
                        c.direction,
                        c.payload,
                        c.created_at,
+                       c.updated_at,
                        d.name AS deck_name,
                        d.target_language,
                        d.prompt_templates,
@@ -148,7 +149,7 @@ def list_recent_cards(
                 FROM cards c
                 JOIN decks d ON d.id = c.deck_id
                 WHERE c.owner_id = %s
-                ORDER BY c.created_at DESC
+                ORDER BY c.updated_at DESC
                 LIMIT %s
                 """,
                 (_uuid(owner_id), limit),
@@ -180,6 +181,7 @@ def list_cards_for_deck(
                        c.direction,
                        c.payload,
                        c.created_at,
+                       c.updated_at,
                        c.front_audio IS NOT NULL AS has_front_audio,
                        c.back_audio IS NOT NULL AS has_back_audio
                 FROM cards c
@@ -199,11 +201,14 @@ def list_cards_for_deck(
                 "group_id": group_id,
                 "payload": row["payload"],
                 "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
                 "directions": [],
                 "audio_card": None,
                 "audio_side": None,
             },
         )
+        group["created_at"] = min(group["created_at"], row["created_at"])
+        group["updated_at"] = max(group["updated_at"], row["updated_at"])
         faces = _render_card(deck, row["payload"], row["direction"], native_language)
         group["directions"].append(
             {
@@ -223,7 +228,7 @@ def list_cards_for_deck(
             group["audio_side"] = "back"
     ordered = sorted(
         grouped.values(),
-        key=lambda g: g["created_at"],
+        key=lambda g: g["updated_at"],
         reverse=True,
     )
     return ordered
@@ -241,6 +246,7 @@ def get_cards_for_export(
                        c.direction,
                        c.payload,
                        c.created_at,
+                       c.updated_at,
                        c.front_audio,
                        c.back_audio,
                        c.audio_filename
@@ -263,6 +269,7 @@ def get_cards_for_export(
                 "front_audio": bytes(row["front_audio"]) if row["front_audio"] else None,
                 "back_audio": bytes(row["back_audio"]) if row["back_audio"] else None,
                 "audio_filename": row.get("audio_filename"),
+                "updated_at": row.get("updated_at"),
             }
         )
     return export_rows
@@ -277,6 +284,8 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
                        c.id,
                        c.direction,
                        c.payload,
+                       c.created_at,
+                       c.updated_at,
                        c.deck_id,
                        c.audio_filename,
                        c.front_audio,
@@ -305,7 +314,11 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
     }
     payload = rows[0]["payload"]
     audio_bytes = None
+    created_at = rows[0]["created_at"]
+    updated_at = rows[0]["updated_at"]
     for row in rows:
+        created_at = min(created_at, row["created_at"])
+        updated_at = max(updated_at, row["updated_at"])
         if row["front_audio"]:
             audio_bytes = bytes(row["front_audio"])
             break
@@ -320,6 +333,8 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
         "payload": payload,
         "audio": audio_bytes,
         "audio_filename": rows[0]["audio_filename"],
+        "created_at": created_at,
+        "updated_at": updated_at,
     }
 
 
@@ -369,6 +384,7 @@ def update_card_group(
                                 audio_filename,
                             ]
                         )
+                    set_clauses.append("updated_at = NOW()")
                     sql = f"UPDATE cards SET {', '.join(set_clauses)} WHERE id = %s"
                     params.append(row["id"])
                     cur.execute(sql, params)

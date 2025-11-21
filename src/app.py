@@ -823,6 +823,17 @@ def deck_detail(request: Request, deck_id: str, user=Depends(get_current_user)):
     generation_prompts = deck_service.get_generation_prompts(deck)
     entry_count = len(cards)
     card_count = sum(len(group.get("directions", [])) for group in cards)
+    deck_last_modified = deck.get("updated_at")
+    if cards:
+        most_recent_card = max(
+            (card.get("updated_at") for card in cards if card.get("updated_at")),
+            default=None,
+        )
+        if most_recent_card:
+            if deck_last_modified:
+                deck_last_modified = max(deck_last_modified, most_recent_card)
+            else:
+                deck_last_modified = most_recent_card
     return templates.TemplateResponse(
         "deck_detail.html",
         {
@@ -834,6 +845,7 @@ def deck_detail(request: Request, deck_id: str, user=Depends(get_current_user)):
             "just_saved": request.query_params.get("saved") == "1",
             "entry_count": entry_count,
             "card_count": card_count,
+            "deck_last_modified": deck_last_modified,
         },
     )
 

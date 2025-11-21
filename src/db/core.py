@@ -81,9 +81,13 @@ def init_db():
                     field_schema JSONB NOT NULL DEFAULT '[]'::jsonb,
                     prompt_templates JSONB NOT NULL DEFAULT '{}'::jsonb,
                     is_shared BOOLEAN NOT NULL DEFAULT FALSE,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
+            )
+            cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
 
             # Cards
@@ -98,7 +102,8 @@ def init_db():
                     front_audio BYTEA,
                     back_audio BYTEA,
                     audio_filename TEXT,
-                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
                 )
                 """
             )
@@ -113,6 +118,9 @@ def init_db():
             )
             cur.execute(
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS card_group_id UUID"
+            )
+            cur.execute(
+                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
             cur.execute(
                 """
