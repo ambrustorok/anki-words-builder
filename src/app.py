@@ -1162,6 +1162,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
     )
     generation_prompts = deck_service.get_generation_prompts(deck)
     audio_preferences = _audio_preferences_from_form(form, deck)
+    audio_allowed = deck_service.is_audio_enabled(deck)
     selected_directions = _get_directions_from_form(form, default_if_empty=None)
     if selected_directions:
         directions = selected_directions
@@ -1257,6 +1258,11 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
             return render_form(error=str(err), status_code=400)
         return render_form(info="Example sentence updated.")
     elif submit_action == "regen_audio":
+        if not audio_allowed:
+            return render_form(
+                error="Audio is disabled for this deck. Enable it from the deck settings.",
+                status_code=400,
+            )
         missing = require_generation()
         if missing:
             return missing
