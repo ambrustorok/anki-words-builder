@@ -1,5 +1,6 @@
 import json
 import uuid
+from copy import deepcopy
 from typing import List, Optional
 
 from psycopg2.extras import Json, RealDictCursor
@@ -11,32 +12,101 @@ def _uuid(value: uuid.UUID) -> str:
     return str(value)
 
 
+DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE = (
+    "Talk in a natural tone and speed for a native {target_language} speaker."
+)
+
+
+FIELD_LIBRARY = [
+    {
+        "key": "foreign_phrase",
+        "label": "Foreign expression",
+        "required": True,
+        "description": "Phrase in the language you are learning.",
+        "default_auto_generate": False,
+        "supports_generation": False,
+        "default_enabled": True,
+        "allow_disable": False,
+    },
+    {
+        "key": "native_phrase",
+        "label": "Native expression",
+        "required": False,
+        "description": "Translation in your native language.",
+        "default_auto_generate": True,
+        "supports_generation": True,
+        "default_enabled": True,
+        "allow_disable": True,
+    },
+    {
+        "key": "dictionary_entry",
+        "label": "Dictionary / Notes",
+        "required": False,
+        "description": "Optional dictionary entry or grammatical notes.",
+        "default_auto_generate": True,
+        "supports_generation": True,
+        "default_enabled": True,
+        "allow_disable": True,
+    },
+    {
+        "key": "example_sentence",
+        "label": "Example sentence",
+        "required": False,
+        "description": "Short usage sentence in the target language.",
+        "default_auto_generate": True,
+        "supports_generation": True,
+        "default_enabled": True,
+        "allow_disable": True,
+    },
+]
+
+FIELD_BY_KEY = {field["key"]: field for field in FIELD_LIBRARY}
+
+
+def get_field_library() -> List[dict]:
+    return [deepcopy(field) for field in FIELD_LIBRARY]
+
+
+def _normalize_field(entry: dict) -> dict:
+    key = entry.get("key")
+    base = FIELD_BY_KEY.get(key, {})
+    normalized = {
+        "key": key,
+        "label": entry.get("label") or base.get("label") or key,
+        "required": bool(
+            entry.get("required") if entry.get("required") is not None else base.get("required", False)
+        ),
+        "description": entry.get("description") or base.get("description") or "",
+        "auto_generate": bool(
+            entry.get("auto_generate")
+            if entry.get("auto_generate") is not None
+            else base.get("default_auto_generate", False)
+        ),
+    }
+    return normalized
+
+
+def normalize_field_schema(schema: Optional[List[dict]]) -> List[dict]:
+    if schema is None:
+        return default_field_schema()
+    normalized: List[dict] = []
+    seen_keys = set()
+    for entry in schema:
+        if not entry or not entry.get("key"):
+            continue
+        normalized_field = _normalize_field(entry)
+        normalized.append(normalized_field)
+        seen_keys.add(normalized_field["key"])
+    if "foreign_phrase" not in seen_keys:
+        normalized.insert(0, _normalize_field({"key": "foreign_phrase"}))
+    return normalized
+
+
 def default_field_schema():
     return [
-        {
-            "key": "foreign_phrase",
-            "label": "Foreign Phrase",
-            "required": True,
-            "description": "Phrase in the language you are learning",
-        },
-        {
-            "key": "native_phrase",
-            "label": "Native Phrase",
-            "required": False,
-            "description": "Auto-generated translation in your native language (editable).",
-        },
-        {
-            "key": "dictionary_entry",
-            "label": "Dictionary / Notes",
-            "required": False,
-            "description": "Optional dictionary entry or grammatical notes.",
-        },
-        {
-            "key": "example_sentence",
-            "label": "Example Sentence",
-            "required": False,
-            "description": "Short usage sentence in the target language.",
-        },
+        _normalize_field(field)
+        for field in FIELD_LIBRARY
+        if field.get("default_enabled", True)
     ]
 
 
@@ -76,15 +146,31 @@ def default_prompt_templates():
             ),
         },
         "generation": default_generation_prompts(),
+        "audio": {
+            "instructions": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+            "enabled": True,
+        },
     }
 
 
 def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                 field_schema: Optional[List[dict]] = None,
-                prompt_templates: Optional[dict] = None) -> dict:
+                prompt_templates: Optional[dict] = None,
+                audio_instructions: Optional[str] = None,
+                audio_enabled: Optional[bool] = None) -> dict:
     deck_id = uuid.uuid4()
-    schema = field_schema or default_field_schema()
+    schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
     prompts = prompt_templates or default_prompt_templates()
+    audio_cfg = prompts.get("audio") or {}
+    if audio_instructions is not None:
+        instructions = (audio_instructions or "").strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+        audio_cfg["instructions"] = instructions
+    if audio_enabled is not None:
+        audio_cfg["enabled"] = bool(audio_enabled)
+    prompts["audio"] = {
+        "instructions": audio_cfg.get("instructions") or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "enabled": audio_cfg.get("enabled", True),
+    }
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -136,6 +222,8 @@ def list_decks(owner_id: uuid.UUID) -> List[dict]:
                 (_uuid(owner_id), _uuid(owner_id)),
             )
             rows = cur.fetchall()
+    for row in rows:
+        row["field_schema"] = normalize_field_schema(row.get("field_schema"))
     return _hydrate_deck_stats(rows)
 
 
@@ -163,6 +251,8 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                 (_uuid(owner_id), _uuid(owner_id), max(1, int(limit))),
             )
             rows = cur.fetchall()
+    for row in rows:
+        row["field_schema"] = normalize_field_schema(row.get("field_schema"))
     return _hydrate_deck_stats(rows)
 
 
@@ -182,20 +272,37 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                 """,
                 (_uuid(deck_id), _uuid(owner_id)),
             )
-            return cur.fetchone()
+            deck = cur.fetchone()
+    if not deck:
+        return None
+    deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
+    return deck
 
 
 def update_deck(owner_id: uuid.UUID, deck_id: uuid.UUID, *, name: str, target_language: str,
-                field_schema: List[dict], generation_prompts: Optional[dict] = None) -> Optional[dict]:
+                field_schema: List[dict], generation_prompts: Optional[dict] = None,
+                audio_instructions: Optional[str] = None,
+                audio_enabled: Optional[bool] = None) -> Optional[dict]:
+    schema = normalize_field_schema(field_schema)
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             prompts = None
-            if generation_prompts is not None:
+            if generation_prompts is not None or audio_instructions is not None or audio_enabled is not None:
                 existing = get_deck(deck_id, owner_id)
                 if not existing:
                     return None
                 merged = existing.get("prompt_templates") or default_prompt_templates()
-                merged["generation"] = generation_prompts
+                if generation_prompts is not None:
+                    merged["generation"] = generation_prompts
+                if audio_instructions is not None:
+                    instruction_text = (audio_instructions or "").strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+                    audio_cfg = merged.get("audio") or {}
+                    audio_cfg["instructions"] = instruction_text
+                    merged["audio"] = audio_cfg
+                if audio_enabled is not None:
+                    audio_cfg = merged.get("audio") or {}
+                    audio_cfg["enabled"] = bool(audio_enabled)
+                    merged["audio"] = audio_cfg
                 prompts = merged
 
             cur.execute(
@@ -207,11 +314,12 @@ def update_deck(owner_id: uuid.UUID, deck_id: uuid.UUID, *, name: str, target_la
                 WHERE id = %s AND owner_id = %s
                 RETURNING id, name, target_language, field_schema, prompt_templates, created_at
                 """,
-                (name.strip(), target_language.strip(), Json(field_schema), _uuid(deck_id), _uuid(owner_id)),
+                (name.strip(), target_language.strip(), Json(schema), _uuid(deck_id), _uuid(owner_id)),
             )
             updated = cur.fetchone()
             if not updated:
                 return None
+            updated["field_schema"] = normalize_field_schema(updated.get("field_schema"))
             if prompts is not None:
                 cur.execute(
                     """
@@ -246,3 +354,22 @@ def get_generation_prompts(deck: dict) -> dict:
     merged = default_generation_prompts()
     merged.update(generation)
     return merged
+
+
+def get_audio_prompt_template(deck: dict) -> str:
+    templates = deck.get("prompt_templates") or default_prompt_templates()
+    audio_cfg = templates.get("audio") or {}
+    return audio_cfg.get("instructions") or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+
+
+def get_audio_instructions(deck: dict) -> str:
+    template = get_audio_prompt_template(deck)
+    target_language = deck.get("target_language") or ""
+    replacement = target_language or "the target language"
+    return template.replace("{target_language}", replacement)
+
+
+def is_audio_enabled(deck: dict) -> bool:
+    templates = deck.get("prompt_templates") or default_prompt_templates()
+    audio_cfg = templates.get("audio") or {}
+    return bool(audio_cfg.get("enabled", True))

@@ -1,5 +1,5 @@
 import re
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from openai import OpenAI
 
@@ -72,6 +72,13 @@ def generate_sentence(client: OpenAI, prompts: Dict[str, Dict[str, str]], contex
     return _run_completion(client, prompt_cfg, context)
 
 
+def _can_generate_field(field_schema: Optional[List[dict]], field_key: str) -> bool:
+    for field in field_schema or []:
+        if field.get("key") == field_key:
+            return bool(field.get("auto_generate"))
+    return False
+
+
 def enrich_payload(
     client: OpenAI,
     payload: Dict[str, str],
@@ -79,6 +86,7 @@ def enrich_payload(
     target_language: str,
     native_language: str,
     generation_prompts: Dict[str, Dict[str, str]],
+    field_schema: Optional[List[dict]] = None,
 ) -> Dict[str, str]:
     foreign_phrase = payload.get(foreign_phrase_key, "").strip()
     if not foreign_phrase:
@@ -90,13 +98,13 @@ def enrich_payload(
         "native_language": native_language,
     }
 
-    if not payload.get("native_phrase"):
+    if _can_generate_field(field_schema, "native_phrase") and not payload.get("native_phrase"):
         payload["native_phrase"] = generate_translation(client, generation_prompts, context)
 
-    if not payload.get("dictionary_entry"):
+    if _can_generate_field(field_schema, "dictionary_entry") and not payload.get("dictionary_entry"):
         payload["dictionary_entry"] = generate_dictionary(client, generation_prompts, context)
 
-    if not payload.get("example_sentence"):
+    if _can_generate_field(field_schema, "example_sentence") and not payload.get("example_sentence"):
         if _should_generate_sentence(foreign_phrase):
             payload["example_sentence"] = generate_sentence(client, generation_prompts, context)
         else:
@@ -113,6 +121,7 @@ def regenerate_field(
     target_language: str,
     native_language: str,
     generation_prompts: Dict[str, Dict[str, str]],
+    field_schema: Optional[List[dict]] = None,
 ) -> Dict[str, str]:
     context = {
         "foreign_phrase": payload.get(foreign_phrase_key, "").strip(),
@@ -121,6 +130,9 @@ def regenerate_field(
     }
     if not context["foreign_phrase"]:
         raise ValueError("Provide a foreign phrase before regenerating.")
+
+    if not _can_generate_field(field_schema, field):
+        raise ValueError("Generation is disabled for this field in deck settings.")
 
     if field == "native_phrase":
         payload["native_phrase"] = generate_translation(client, generation_prompts, context)
