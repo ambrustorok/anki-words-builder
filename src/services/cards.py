@@ -160,8 +160,7 @@ def list_recent_cards(
             "name": row["deck_name"],
             "target_language": row["target_language"],
             "prompt_templates": row["prompt_templates"],
-            "field_schema": row.get("field_schema")
-            or deck_service.default_field_schema(),
+            "field_schema": deck_service.normalize_field_schema(row.get("field_schema")),
         }
         faces = _render_card(deck, row["payload"], row["direction"], native_language)
         row["front"] = faces["front"]
@@ -301,7 +300,7 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
         "id": rows[0]["deck_id"],
         "name": rows[0]["deck_name"],
         "target_language": rows[0]["target_language"],
-        "field_schema": rows[0]["field_schema"],
+        "field_schema": deck_service.normalize_field_schema(rows[0]["field_schema"]),
         "prompt_templates": rows[0]["prompt_templates"],
     }
     payload = rows[0]["payload"]

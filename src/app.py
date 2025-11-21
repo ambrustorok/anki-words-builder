@@ -1,10 +1,9 @@
 import base64
 import io
-import json
 import os
 import uuid
 from pathlib import Path
-from typing import Optional
+from typing import List, Optional
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
@@ -54,7 +53,10 @@ AUDIO_VOICES = [
     "sage",
     "shimmer",
 ]
-DEFAULT_AUDIO_INSTRUCTIONS = "Speak slowly and clearly for a language learner."
+DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE = deck_service.DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+FALLBACK_AUDIO_INSTRUCTIONS = DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE.replace(
+    "{target_language}", "the target language"
+)
 
 templates.env.globals["logout_url"] = _build_logout_url
 
@@ -109,18 +111,6 @@ def _parse_uuid(value: str, *, entity: str) -> uuid.UUID:
         raise HTTPException(status_code=404, detail=f"{entity} not found") from exc
 
 
-def _parse_field_schema(raw_json: Optional[str]):
-    if not raw_json:
-        return None
-    try:
-        schema = json.loads(raw_json)
-    except json.JSONDecodeError as exc:
-        raise HTTPException(status_code=400, detail="Invalid JSON for field schema.") from exc
-    if not isinstance(schema, list):
-        raise HTTPException(status_code=400, detail="Field schema JSON must be a list.")
-    return schema
-
-
 def _encode_audio_preview(audio_bytes: Optional[bytes]) -> str:
     if not audio_bytes:
         return ""
@@ -136,19 +126,23 @@ def _decode_audio_preview(data: Optional[str]) -> Optional[bytes]:
         return None
 
 
-def _default_audio_preferences() -> dict:
-    return {"voice": "random", "instructions": DEFAULT_AUDIO_INSTRUCTIONS}
+def _default_audio_preferences(deck: Optional[dict] = None) -> dict:
+    instructions = FALLBACK_AUDIO_INSTRUCTIONS
+    if deck:
+        instructions = deck_service.get_audio_instructions(deck)
+    return {"voice": "random", "instructions": instructions}
 
 
-def _audio_preferences_from_form(form) -> dict:
+def _audio_preferences_from_form(form, deck: Optional[dict]) -> dict:
+    defaults = _default_audio_preferences(deck)
     if not form:
-        return _default_audio_preferences()
+        return defaults
     voice = (form.get("audio_voice") or "random").strip().lower()
     if voice not in AUDIO_VOICES:
         voice = "random"
-    instructions = (form.get("audio_instructions") or DEFAULT_AUDIO_INSTRUCTIONS).strip()
+    instructions = (form.get("audio_instructions") or "").strip()
     if not instructions:
-        instructions = DEFAULT_AUDIO_INSTRUCTIONS
+        instructions = defaults["instructions"]
     return {"voice": voice, "instructions": instructions}
 
 
@@ -181,9 +175,10 @@ def _card_form_context(
         "mode": mode,
         "form_action": form_action or ("/cards" if mode == "create" else ""),
         "submit_label": submit_label,
-        "audio_preferences": audio_preferences or _default_audio_preferences(),
+        "audio_preferences": audio_preferences or _default_audio_preferences(deck),
         "audio_voice_options": ["random"] + AUDIO_VOICES,
         "generation_disabled": not generation_enabled,
+        "audio_enabled": deck_service.is_audio_enabled(deck),
     }
     return context
 
@@ -193,6 +188,47 @@ def _build_payload_from_form(deck: dict, form) -> dict:
     for field in deck.get("field_schema", []):
         payload[field["key"]] = form.get(field["key"], "").strip()
     return payload
+
+
+def _build_field_schema_from_form(form, existing_schema: Optional[List[dict]] = None) -> List[dict]:
+    field_options = deck_service.get_field_library()
+    known_keys = {option["key"] for option in field_options}
+    preserved = []
+    for field in existing_schema or []:
+        if field.get("key") not in known_keys:
+            preserved.append(field)
+    schema: List[dict] = []
+    for option in field_options:
+        key = option["key"]
+        include = True
+        if option.get("allow_disable", True):
+            include = form.get(f"field_{key}_enabled") == "on"
+        if not include:
+            continue
+        auto_enabled = False
+        if option.get("supports_generation"):
+            auto_enabled = form.get(f"field_{key}_auto") == "on"
+        schema.append(
+            {
+                "key": key,
+                "label": option["label"],
+                "required": option.get("required", False),
+                "description": option.get("description", ""),
+                "auto_generate": auto_enabled,
+            }
+        )
+    schema.extend(preserved)
+    return deck_service.normalize_field_schema(schema)
+
+
+def _field_state_map(schema: Optional[List[dict]]) -> dict:
+    state = {}
+    if schema:
+        for field in schema:
+            key = field.get("key")
+            if key:
+                state[key] = field
+    return state
 
 
 def _get_foreign_field_key(deck: dict) -> Optional[str]:
@@ -574,68 +610,77 @@ def decks_page(request: Request, user=Depends(get_current_user)):
 def new_deck(request: Request, user=Depends(get_current_user)):
     if not _ensure_native_language_set(user):
         return RedirectResponse("/onboarding", status_code=302)
+    default_schema = deck_service.default_field_schema()
     return templates.TemplateResponse(
         "deck_new.html",
         {
             "request": request,
             "user": user,
-            "default_schema": deck_service.default_field_schema(),
+            "default_schema": default_schema,
+            "field_options": deck_service.get_field_library(),
+            "field_state": _field_state_map(default_schema),
+            "custom_fields": [],
+            "form_values": {
+                "name": "",
+                "target_language": "",
+                "audio_instructions": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+                "audio_enabled": True,
+            },
+            "audio_placeholder": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
             "target_languages": TARGET_LANGUAGE_OPTIONS,
         },
     )
 
 
 @app.post("/decks")
-async def create_deck(
-    request: Request,
-    user=Depends(get_current_user),
-    name: str = Form(...),
-    target_language: str = Form(...),
-    field_schema_json: Optional[str] = Form(None),
-):
-    if not name.strip():
+async def create_deck(request: Request, user=Depends(get_current_user)):
+    form = await request.form()
+    name = (form.get("name") or "").strip()
+    target_language = (form.get("target_language") or "").strip()
+    audio_instructions_raw = form.get("audio_instructions")
+    audio_instructions = audio_instructions_raw.strip() if audio_instructions_raw is not None else None
+    audio_enabled = form.get("audio_enabled") == "on"
+    field_schema = _build_field_schema_from_form(form)
+    field_state = _field_state_map(field_schema)
+    form_values = {
+        "name": name,
+        "target_language": target_language,
+        "audio_instructions": audio_instructions_raw if audio_instructions_raw is not None else DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "audio_enabled": audio_enabled,
+    }
+
+    def render_form(error: Optional[str], status_code: int = 400):
         return templates.TemplateResponse(
             "deck_new.html",
             {
                 "request": request,
                 "user": user,
                 "default_schema": deck_service.default_field_schema(),
-                "error": "Deck name cannot be empty.",
+                "error": error,
                 "target_languages": TARGET_LANGUAGE_OPTIONS,
+                "field_options": deck_service.get_field_library(),
+                "field_state": field_state,
+                "form_values": form_values,
+                "audio_placeholder": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+                "custom_fields": [],
             },
-            status_code=400,
-        )
-    if not target_language.strip():
-        return templates.TemplateResponse(
-            "deck_new.html",
-            {
-                "request": request,
-                "user": user,
-                "default_schema": deck_service.default_field_schema(),
-                "error": "Target language is required.",
-                "target_languages": TARGET_LANGUAGE_OPTIONS,
-            },
-            status_code=400,
-        )
-    if target_language not in TARGET_LANGUAGE_OPTIONS:
-        return templates.TemplateResponse(
-            "deck_new.html",
-            {
-                "request": request,
-                "user": user,
-                "default_schema": deck_service.default_field_schema(),
-                "error": "Select one of the supported target languages.",
-                "target_languages": TARGET_LANGUAGE_OPTIONS,
-            },
-            status_code=400,
+            status_code=status_code,
         )
 
-    schema_override = _parse_field_schema(field_schema_json)
+    if not name:
+        return render_form("Deck name cannot be empty.")
+    if not target_language:
+        return render_form("Target language is required.")
+    if target_language not in TARGET_LANGUAGE_OPTIONS:
+        return render_form("Select one of the supported target languages.")
+
     deck = deck_service.create_deck(
         owner_id=user["id"],
         name=name,
         target_language=target_language,
-        field_schema=schema_override,
+        field_schema=field_schema,
+        audio_instructions=audio_instructions,
+        audio_enabled=audio_enabled,
     )
     return RedirectResponse(f"/decks/{deck['id']}", status_code=303)
 
@@ -647,6 +692,15 @@ def edit_deck_page(request: Request, deck_id: str, user=Depends(get_current_user
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
     generation_prompts = deck_service.get_generation_prompts(deck)
+    field_options = deck_service.get_field_library()
+    library_keys = {field["key"] for field in field_options}
+    custom_fields = [field for field in deck["field_schema"] if field["key"] not in library_keys]
+    form_values = {
+        "name": deck["name"],
+        "target_language": deck["target_language"],
+        "audio_instructions": deck_service.get_audio_prompt_template(deck),
+        "audio_enabled": deck_service.is_audio_enabled(deck),
+    }
     return templates.TemplateResponse(
         "deck_edit.html",
         {
@@ -655,53 +709,95 @@ def edit_deck_page(request: Request, deck_id: str, user=Depends(get_current_user
             "deck": deck,
             "generation_prompts": generation_prompts,
             "target_languages": TARGET_LANGUAGE_OPTIONS,
+            "field_options": field_options,
+            "field_state": _field_state_map(deck["field_schema"]),
+            "custom_fields": custom_fields,
+            "form_values": form_values,
+            "audio_placeholder": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
         },
     )
 
 
 @app.post("/decks/{deck_id}/edit")
-def update_deck(
-    request: Request,
-    deck_id: str,
-    user=Depends(get_current_user),
-    name: str = Form(...),
-    target_language: str = Form(...),
-    field_schema_json: str = Form(...),
-    translation_system: str = Form(...),
-    translation_user: str = Form(...),
-    dictionary_system: str = Form(...),
-    dictionary_user: str = Form(...),
-    sentence_system: str = Form(...),
-    sentence_user: str = Form(...),
-):
+async def update_deck(request: Request, deck_id: str, user=Depends(get_current_user)):
+    form = await request.form()
     deck_uuid = _parse_uuid(deck_id, entity="Deck")
     deck = deck_service.get_deck(deck_uuid, user["id"])
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
 
-    schema = _parse_field_schema(field_schema_json) or deck_service.default_field_schema()
+    name = (form.get("name") or "").strip()
+    target_language = (form.get("target_language") or "").strip()
+    audio_instructions_raw = form.get("audio_instructions")
+    audio_instructions = audio_instructions_raw.strip() if audio_instructions_raw is not None else None
+    audio_enabled = form.get("audio_enabled") == "on"
+    field_schema = _build_field_schema_from_form(form, deck.get("field_schema"))
+    field_state = _field_state_map(field_schema)
+    field_options = deck_service.get_field_library()
+    library_keys = {option["key"] for option in field_options}
+    custom_fields = [field for field in field_schema if field.get("key") not in library_keys]
     generation_prompts = {
         "translation": {
-            "system": translation_system.strip(),
-            "user": translation_user.strip(),
+            "system": (form.get("translation_system") or "").strip(),
+            "user": (form.get("translation_user") or "").strip(),
         },
         "dictionary": {
-            "system": dictionary_system.strip(),
-            "user": dictionary_user.strip(),
+            "system": (form.get("dictionary_system") or "").strip(),
+            "user": (form.get("dictionary_user") or "").strip(),
         },
         "sentence": {
-            "system": sentence_system.strip(),
-            "user": sentence_user.strip(),
+            "system": (form.get("sentence_system") or "").strip(),
+            "user": (form.get("sentence_user") or "").strip(),
         },
     }
+    form_values = {
+        "name": name,
+        "target_language": target_language,
+        "audio_instructions": audio_instructions_raw if audio_instructions_raw is not None else deck_service.get_audio_prompt_template(deck),
+        "audio_enabled": audio_enabled,
+    }
+    deck_preview = {
+        **deck,
+        "name": name or deck["name"],
+        "target_language": target_language or deck["target_language"],
+        "field_schema": field_schema,
+    }
+
+    def render_form(error: Optional[str], status_code: int = 400):
+        return templates.TemplateResponse(
+            "deck_edit.html",
+            {
+                "request": request,
+                "user": user,
+                "deck": deck_preview,
+                "generation_prompts": generation_prompts,
+                "target_languages": TARGET_LANGUAGE_OPTIONS,
+                "field_options": field_options,
+                "field_state": field_state,
+                "custom_fields": custom_fields,
+                "form_values": form_values,
+                "error": error,
+                "audio_placeholder": DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+            },
+            status_code=status_code,
+        )
+
+    if not name:
+        return render_form("Deck name cannot be empty.")
+    if not target_language:
+        return render_form("Target language is required.")
+    if target_language not in TARGET_LANGUAGE_OPTIONS:
+        return render_form("Select one of the supported target languages.")
 
     updated = deck_service.update_deck(
         user["id"],
         deck_uuid,
         name=name,
         target_language=target_language,
-        field_schema=schema,
+        field_schema=field_schema,
         generation_prompts=generation_prompts,
+        audio_instructions=audio_instructions,
+        audio_enabled=audio_enabled,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Deck not found.")
@@ -772,7 +868,7 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
     deck = deck_service.get_deck(deck_uuid, user["id"])
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
-    audio_preferences = _default_audio_preferences()
+    audio_preferences = _default_audio_preferences(deck)
     generation_allowed = api_key_service.user_can_generate(user["id"])
     return templates.TemplateResponse(
         "card_form.html",
@@ -828,7 +924,8 @@ async def create_card(request: Request, user=Depends(get_current_user)):
         api_key_service.get_openai_client_for_user(user["id"]) if generation_allowed else None
     )
     generation_prompts = deck_service.get_generation_prompts(deck)
-    audio_preferences = _audio_preferences_from_form(form)
+    audio_preferences = _audio_preferences_from_form(form, deck)
+    audio_allowed = deck_service.is_audio_enabled(deck)
 
     if not foreign_field_key:
         raise HTTPException(status_code=400, detail="Deck is missing a foreign phrase field.")
@@ -879,6 +976,7 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
@@ -896,6 +994,7 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
@@ -913,11 +1012,14 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
         return render_form(info="Example sentence updated.")
     elif submit_action == "regen_audio":
+        if not audio_allowed:
+            return render_form(error="Audio is disabled for this deck. Enable it from the deck settings.", status_code=400)
         missing = require_generation()
         if missing:
             return missing
@@ -946,19 +1048,21 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=f"Generation failed: {err}", status_code=500)
-        try:
-            audio_bytes = generation_service.generate_audio_for_phrase(
-                client,
-                payload.get(foreign_field_key, ""),
-                voice=audio_preferences["voice"],
-                instructions=audio_preferences["instructions"],
-            )
-            audio_preview_b64 = _encode_audio_preview(audio_bytes)
-        except Exception as err:
-            return render_form(error=f"Audio generation failed: {err}", status_code=500)
+        if audio_allowed:
+            try:
+                audio_bytes = generation_service.generate_audio_for_phrase(
+                    client,
+                    payload.get(foreign_field_key, ""),
+                    voice=audio_preferences["voice"],
+                    instructions=audio_preferences["instructions"],
+                )
+                audio_preview_b64 = _encode_audio_preview(audio_bytes)
+            except Exception as err:
+                return render_form(error=f"Audio generation failed: {err}", status_code=500)
         return render_form(info="All fields populated. Review and save when ready.")
 
     if submit_action == "save" and not directions:
@@ -978,11 +1082,12 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=f"Generation failed: {err}", status_code=500)
 
-        if audio_bytes is None:
+        if audio_allowed and audio_bytes is None:
             try:
                 audio_bytes = generation_service.generate_audio_for_phrase(
                     client,
@@ -1031,7 +1136,7 @@ def edit_card(request: Request, group_id: str, user=Depends(get_current_user)):
             mode="edit",
             form_action=f"/cards/{group_id}",
             submit_label="Save changes",
-            audio_preferences=_default_audio_preferences(),
+            audio_preferences=_default_audio_preferences(deck),
             generation_enabled=generation_allowed,
         ),
     )
@@ -1056,7 +1161,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
         api_key_service.get_openai_client_for_user(user["id"]) if generation_allowed else None
     )
     generation_prompts = deck_service.get_generation_prompts(deck)
-    audio_preferences = _audio_preferences_from_form(form)
+    audio_preferences = _audio_preferences_from_form(form, deck)
     selected_directions = _get_directions_from_form(form, default_if_empty=None)
     if selected_directions:
         directions = selected_directions
@@ -1110,6 +1215,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
@@ -1127,6 +1233,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
@@ -1144,6 +1251,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=str(err), status_code=400)
@@ -1180,11 +1288,12 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 deck["target_language"],
                 user.get("native_language") or "English",
                 generation_prompts,
+                deck.get("field_schema"),
             )
         except Exception as err:
             return render_form(error=f"Generation failed: {err}", status_code=500)
 
-        if audio_bytes is None:
+        if audio_allowed and audio_bytes is None:
             try:
                 audio_bytes = generation_service.generate_audio_for_phrase(
                     client,
