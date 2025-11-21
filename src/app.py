@@ -5,11 +5,14 @@ import uuid
 from pathlib import Path
 from typing import List, Optional
 
+import httpx
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from pydub import AudioSegment
+from pydub.exceptions import CouldntDecodeError
 from urllib.parse import quote_plus
 
 from .db.core import init_db
@@ -126,6 +129,89 @@ def _decode_audio_preview(data: Optional[str]) -> Optional[bytes]:
         return None
 
 
+def _infer_audio_format(filename: Optional[str], content_type: Optional[str]) -> Optional[str]:
+    if content_type:
+        normalized = content_type.split(";")[0].strip().lower()
+        content_map = {
+            "audio/mpeg": "mp3",
+            "audio/mp3": "mp3",
+            "audio/wav": "wav",
+            "audio/x-wav": "wav",
+            "audio/wave": "wav",
+            "audio/aac": "aac",
+            "audio/x-aac": "aac",
+            "audio/m4a": "m4a",
+            "audio/mp4": "mp4",
+            "audio/ogg": "ogg",
+            "audio/webm": "webm",
+            "audio/flac": "flac",
+        }
+        if normalized in content_map:
+            return content_map[normalized]
+    if filename:
+        ext = Path(filename).suffix.lower().lstrip(".")
+        extension_map = {
+            "mp3": "mp3",
+            "wav": "wav",
+            "wave": "wav",
+            "aac": "aac",
+            "m4a": "mp4",
+            "mp4": "mp4",
+            "ogg": "ogg",
+            "oga": "ogg",
+            "opus": "ogg",
+            "flac": "flac",
+            "webm": "webm",
+        }
+        if ext in extension_map:
+            return extension_map[ext]
+    return None
+
+
+def _convert_audio_bytes_to_mp3(data: bytes, *, source_format: Optional[str] = None) -> bytes:
+    buffer = io.BytesIO(data)
+    buffer.seek(0)
+    try:
+        if source_format:
+            segment = AudioSegment.from_file(buffer, format=source_format)
+        else:
+            segment = AudioSegment.from_file(buffer)
+    except CouldntDecodeError as exc:
+        raise ValueError("Unable to decode the uploaded audio. Please upload a valid audio file.") from exc
+    except Exception as exc:
+        raise ValueError("Failed to process the uploaded audio file.") from exc
+    output = io.BytesIO()
+    segment.export(output, format="mp3")
+    return output.getvalue()
+
+
+MAX_REMOTE_AUDIO_BYTES = 10 * 1024 * 1024  # 10 MB guardrail
+
+
+async def _download_audio_from_url(url: str) -> bytes:
+    normalized = (url or "").strip()
+    if not normalized:
+        raise ValueError("Enter an audio URL to fetch.")
+    if not normalized.lower().startswith(("http://", "https://")):
+        raise ValueError("Audio URL must start with http:// or https://.")
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(normalized)
+            response.raise_for_status()
+    except httpx.HTTPStatusError as exc:
+        status = exc.response.status_code if exc.response else "unknown"
+        raise ValueError(f"Unable to download audio (HTTP {status}).") from exc
+    except httpx.RequestError as exc:
+        raise ValueError("Unable to reach the audio URL. Check the link and try again.") from exc
+    data = response.content
+    if not data:
+        raise ValueError("Downloaded file was empty.")
+    if len(data) > MAX_REMOTE_AUDIO_BYTES:
+        raise ValueError("Audio file is too large. Please provide a clip under 10 MB.")
+    format_hint = _infer_audio_format(normalized, response.headers.get("Content-Type"))
+    return _convert_audio_bytes_to_mp3(data, source_format=format_hint)
+
+
 def _default_audio_preferences(deck: Optional[dict] = None) -> dict:
     instructions = FALLBACK_AUDIO_INSTRUCTIONS
     if deck:
@@ -161,6 +247,7 @@ def _card_form_context(
     submit_label: str = "Save cards",
     audio_preferences: Optional[dict] = None,
     generation_enabled: bool = True,
+    audio_url: str = "",
 ):
     context = {
         "request": request,
@@ -179,6 +266,7 @@ def _card_form_context(
         "audio_voice_options": ["random"] + AUDIO_VOICES,
         "generation_disabled": not generation_enabled,
         "audio_enabled": deck_service.is_audio_enabled(deck),
+        "audio_url": audio_url,
     }
     return context
 
@@ -895,6 +983,7 @@ def new_card(request: Request, deck_id: str, user=Depends(get_current_user)):
             submit_label="Save cards",
             audio_preferences=audio_preferences,
             generation_enabled=generation_allowed,
+            audio_url="",
         ),
     )
 
@@ -938,6 +1027,7 @@ async def create_card(request: Request, user=Depends(get_current_user)):
     generation_prompts = deck_service.get_generation_prompts(deck)
     audio_preferences = _audio_preferences_from_form(form, deck)
     audio_allowed = deck_service.is_audio_enabled(deck)
+    audio_url = (form.get("audio_url") or "").strip()
 
     if not foreign_field_key:
         raise HTTPException(status_code=400, detail="Deck is missing a foreign phrase field.")
@@ -959,11 +1049,27 @@ async def create_card(request: Request, user=Depends(get_current_user)):
                 submit_label="Save cards",
                 audio_preferences=audio_preferences,
                 generation_enabled=generation_allowed,
+                audio_url=audio_url,
             ),
             status_code=status_code,
         )
 
-    if submit_action != "save" and submit_action != "regen_audio":
+    if submit_action == "fetch_audio":
+        if not audio_allowed:
+            return render_form(
+                error="Audio is disabled for this deck. Enable it from the deck settings.",
+                status_code=400,
+            )
+        if not audio_url:
+            return render_form(error="Enter an audio URL to fetch.", status_code=400)
+        try:
+            audio_bytes = await _download_audio_from_url(audio_url)
+            audio_preview_b64 = _encode_audio_preview(audio_bytes)
+        except ValueError as exc:
+            return render_form(error=str(exc), status_code=400)
+        return render_form(info="Audio fetched from link. Remember to save when ready.")
+
+    if submit_action not in {"save", "regen_audio"}:
         if not payload.get(foreign_field_key):
             return render_form(error="Please enter a foreign phrase first.", status_code=400)
 
@@ -1150,6 +1256,7 @@ def edit_card(request: Request, group_id: str, user=Depends(get_current_user)):
             submit_label="Save changes",
             audio_preferences=_default_audio_preferences(deck),
             generation_enabled=generation_allowed,
+            audio_url="",
         ),
     )
 
@@ -1175,6 +1282,7 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
     generation_prompts = deck_service.get_generation_prompts(deck)
     audio_preferences = _audio_preferences_from_form(form, deck)
     audio_allowed = deck_service.is_audio_enabled(deck)
+    audio_url = (form.get("audio_url") or "").strip()
     selected_directions = _get_directions_from_form(form, default_if_empty=None)
     if selected_directions:
         directions = selected_directions
@@ -1199,9 +1307,25 @@ async def update_card(request: Request, group_id: str, user=Depends(get_current_
                 submit_label="Save changes",
                 audio_preferences=audio_preferences,
                 generation_enabled=generation_allowed,
+                audio_url=audio_url,
             ),
             status_code=status_code,
         )
+
+    if submit_action == "fetch_audio":
+        if not audio_allowed:
+            return render_form(
+                error="Audio is disabled for this deck. Enable it from the deck settings.",
+                status_code=400,
+            )
+        if not audio_url:
+            return render_form(error="Enter an audio URL to fetch.", status_code=400)
+        try:
+            audio_bytes = await _download_audio_from_url(audio_url)
+            audio_preview_b64 = _encode_audio_preview(audio_bytes)
+        except ValueError as exc:
+            return render_form(error=str(exc), status_code=400)
+        return render_form(info="Audio fetched from link. Remember to save when ready.")
 
     if submit_action != "save" and submit_action != "regen_audio":
         if not payload.get(foreign_field_key):

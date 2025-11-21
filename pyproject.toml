@@ -15,4 +15,5 @@ dependencies = [
     "openai>=1.98.0",
     "soundfile>=0.13.1",
     "pydub>=0.25.1",
+    "httpx>=0.28.0",
 ]
