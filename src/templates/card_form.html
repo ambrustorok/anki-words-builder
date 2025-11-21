@@ -102,35 +102,47 @@
 
             <aside class="space-y-6">
                 {% if audio_enabled %}
-                    <section class="rounded-3xl border border-slate-200/80 bg-white p-5 dark:border-white/10 dark:bg-slate-900/60">
-                        <div class="flex items-center justify-between gap-3">
-                            <div>
-                                <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Pronunciation audio</h3>
-                                <p class="text-xs text-slate-500 dark:text-slate-400">Voice + instructions feed the OpenAI TTS streaming API.</p>
+                    <section class="rounded-3xl border border-slate-200/80 bg-white p-5 text-sm dark:border-white/10 dark:bg-slate-900/60">
+                        <h3 class="text-lg font-semibold text-slate-900 dark:text-white">Pronunciation audio</h3>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-slate-400">Fill this field however you prefer: regenerate via OpenAI or paste an external link. Both options stay visible so you can switch instantly.</p>
+                        <div class="mt-5 space-y-5">
+                            <div class="rounded-2xl border border-slate-200/70 bg-white/70 p-4 dark:border-white/10 dark:bg-black/20">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Generate with OpenAI</p>
+                                <label class="mt-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    Voice
+                                    <select name="audio_voice" class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-900 dark:border-white/10 dark:bg-slate-950/60 dark:text-white">
+                                        {% for option in audio_voice_options %}
+                                            {% set is_selected = (audio.voice == option) %}
+                                            <option value="{{ option }}" {% if is_selected %}selected{% endif %}>
+                                                {{ option | capitalize if option != "random" else "Random voice" }}
+                                            </option>
+                                        {% endfor %}
+                                    </select>
+                                </label>
+                                <label class="mt-3 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    Instructions
+                                    <textarea name="audio_instructions" rows="3" class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder-slate-500" placeholder="e.g. Speak in a cheerful, encouraging tone.">{{ audio.instructions | e }}</textarea>
+                                </label>
+                                <div class="mt-4 flex flex-wrap justify-end">
+                                    <button type="submit" name="submit_action" value="regen_audio" class="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-brand hover:text-slate-900 dark:border-white/20 dark:text-white {% if gen_disabled %}!cursor-not-allowed opacity-50{% endif %}" {% if gen_disabled %}disabled{% endif %}>Regenerate audio</button>
+                                </div>
                             </div>
-                            <button type="submit" name="submit_action" value="regen_audio" class="rounded-full border border-slate-300 px-3 py-1 text-sm text-slate-700 hover:border-brand hover:text-slate-900 dark:border-white/20 dark:text-white {% if gen_disabled %}!cursor-not-allowed opacity-50{% endif %}" {% if gen_disabled %}disabled{% endif %}>Regenerate audio</button>
-                        </div>
-                        <div class="mt-4 space-y-4 text-sm">
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                Voice
-                                <select name="audio_voice" class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-900 dark:border-white/10 dark:bg-slate-950/60 dark:text-white">
-                                    {% for option in audio_voice_options %}
-                                        {% set is_selected = (audio.voice == option) %}
-                                        <option value="{{ option }}" {% if is_selected %}selected{% endif %}>
-                                            {{ option | capitalize if option != "random" else "Random voice" }}
-                                        </option>
-                                    {% endfor %}
-                                </select>
-                            </label>
-                            <label class="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                                Instructions
-                                <textarea name="audio_instructions" rows="3" class="mt-2 w-full rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-500 dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder-slate-500" placeholder="e.g. Speak in a cheerful, encouraging tone.">{{ audio.instructions | e }}</textarea>
-                            </label>
+                            <div class="rounded-2xl border border-dashed border-slate-300/80 p-4 dark:border-white/20">
+                                <p class="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">Use audio link</p>
+                                <label class="mt-2 block text-xs font-medium text-slate-500 dark:text-slate-400">
+                                    URL
+                                    <div class="mt-2 flex flex-col gap-3 sm:flex-row">
+                                        <input type="url" name="audio_url" value="{{ audio_url | default('') }}" placeholder="https://example.com/audio.mp3" class="flex-1 rounded-2xl border border-slate-200/80 bg-white px-3 py-2 text-sm text-slate-900 placeholder-slate-400 focus:ring-2 focus:ring-brand dark:border-white/10 dark:bg-slate-950/60 dark:text-white dark:placeholder-slate-500">
+                                        <button type="submit" name="submit_action" value="fetch_audio" class="rounded-full border border-slate-300 px-4 py-2 text-xs font-semibold text-slate-700 hover:border-brand hover:text-slate-900 dark:border-white/20 dark:text-white">Fetch audio</button>
+                                    </div>
+                                </label>
+                                <p class="mt-2 text-xs text-slate-500 dark:text-slate-400">We’ll download HTTP/HTTPS links, convert to MP3, and attach the result to this card.</p>
+                            </div>
                             <div class="rounded-2xl border border-slate-200/80 bg-slate-50 p-3 dark:border-white/10 dark:bg-black/30">
                                 {% if audio_preview_b64 %}
                                     <audio controls class="w-full" src="data:audio/mpeg;base64,{{ audio_preview_b64 }}"></audio>
                                 {% else %}
-                                    <p class="text-xs text-slate-500 dark:text-slate-400">No audio yet. Generate once the foreign phrase is filled.</p>
+                                    <p class="text-xs text-slate-500 dark:text-slate-400">No audio yet. Generate with AI or fetch from a link to preview it here.</p>
                                 {% endif %}
                             </div>
                         </div>
