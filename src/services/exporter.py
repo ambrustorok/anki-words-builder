@@ -69,12 +69,14 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     written_files[filename] = file_path
                 back_audio_tag = f"<br>[sound:{filename}]"
 
+            note_guid = card["id"].replace("-", "")
             note = genanki.Note(
                 model=model,
                 fields=[
                     f"{card['front']}{front_audio_tag}",
                     f"{card['back']}{back_audio_tag}",
                 ],
+                guid=note_guid,
             )
             anki_deck.add_note(note)
 
