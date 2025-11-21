@@ -38,24 +38,33 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
         for card in cards:
             front_audio_tag = ""
             back_audio_tag = ""
-            if card.get("front_audio"):
+            front_audio = card.get("front_audio")
+            back_audio = card.get("back_audio")
+
+            # Most cards only store audio on the back; move it to the front when the front
+            # contains the foreign text (forward direction) so pronunciation plays immediately.
+            if card.get("direction") == "forward" and not front_audio and back_audio:
+                front_audio = back_audio
+                back_audio = None
+
+            if front_audio:
                 filename = card.get("audio_filename") or f"{card['id']}_front.mp3"
                 file_path = written_files.get(filename)
                 if not file_path:
                     file_path = os.path.join(temp_dir, filename)
                     with open(file_path, "wb") as media_file:
-                        media_file.write(card["front_audio"])
+                        media_file.write(front_audio)
                     media_files.append(file_path)
                     written_files[filename] = file_path
                 front_audio_tag = f"<br>[sound:{filename}]"
 
-            if card.get("back_audio"):
+            if back_audio:
                 filename = card.get("audio_filename") or f"{card['id']}_back.mp3"
                 file_path = written_files.get(filename)
                 if not file_path:
                     file_path = os.path.join(temp_dir, filename)
                     with open(file_path, "wb") as media_file:
-                        media_file.write(card["back_audio"])
+                        media_file.write(back_audio)
                     media_files.append(file_path)
                     written_files[filename] = file_path
                 back_audio_tag = f"<br>[sound:{filename}]"
