@@ -19,6 +19,7 @@
                         <th class="px-4 py-3">Language</th>
                         <th class="px-4 py-3">Cards</th>
                         <th class="px-4 py-3">Created</th>
+                        <th class="px-4 py-3">Last updated</th>
                         <th class="px-4 py-3 text-right">Actions</th>
                     </tr>
                 </thead>
@@ -32,6 +33,7 @@
                         <td class="px-4 py-3 text-slate-500 dark:text-slate-300">{{ deck.target_language }}</td>
                         <td class="px-4 py-3 text-slate-500 dark:text-slate-300">{{ deck.card_count }}</td>
                         <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ deck.created_at.strftime("%Y-%m-%d") if deck.created_at else "—" }}</td>
+                        <td class="px-4 py-3 text-slate-500 dark:text-slate-400">{{ deck.last_modified_at.strftime("%Y-%m-%d") if deck.last_modified_at else "—" }}</td>
                         <td class="px-4 py-3 text-right text-sm text-brand">
                             <div class="flex justify-end gap-3">
                                 <a class="hover:underline" href="/cards/new?deck_id={{ deck.id }}">Add cards</a>

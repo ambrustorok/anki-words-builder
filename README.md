@@ -40,19 +40,23 @@ To install Anki Words Builder, follow these steps:
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
 
-Needed py psycopg2.
-```bash
-    sudo apt install libpq-dev
-    sudo apt install build-essential
-    sudo apt install ffmpeg
-```
+   You'll also need system packages for `psycopg2` and audio encoding:
+   ```bash
+   sudo apt install libpq-dev build-essential ffmpeg
+   ```
 
-3. **Install Dependencies**:
+4. **Create the uv Virtual Environment**:
     ```bash
-    uv pip sync requirements.txt
+    uv venv
+    source .venv/bin/activate
     ```
 
-4. **Run the Application**:
+5. **Install Python Dependencies** (same command Docker uses):
+    ```bash
+    uv pip install -e .
+    ```
+
+6. **Run the Application**:
     ```bash
     uv run uvicorn src.app:app --reload --port 8000
     ```

@@ -1,13 +1,34 @@
 import os
 import tempfile
 import uuid
-from typing import List
+from datetime import datetime
+from typing import List, Optional
 
 import genanki
 
 
 def _anki_id(seed: str) -> int:
     return uuid.uuid5(uuid.NAMESPACE_OID, seed).int & 0x7FFFFFFF
+
+
+class TimestampedNote(genanki.Note):
+    def __init__(self, *args, updated_at: Optional[datetime] = None, **kwargs):
+        self._note_timestamp = None
+        if updated_at:
+            if hasattr(updated_at, "timestamp"):
+                self._note_timestamp = updated_at.timestamp()
+            else:
+                try:
+                    self._note_timestamp = float(updated_at)
+                except (TypeError, ValueError):
+                    self._note_timestamp = None
+        super().__init__(*args, **kwargs)
+
+    def write_to_db(self, cursor, timestamp: float, deck_id, id_gen):
+        effective_timestamp = (
+            self._note_timestamp if self._note_timestamp is not None else timestamp
+        )
+        super().write_to_db(cursor, effective_timestamp, deck_id, id_gen)
 
 
 def export_deck(deck: dict, cards: List[dict]) -> bytes:
@@ -70,13 +91,14 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                 back_audio_tag = f"<br>[sound:{filename}]"
 
             note_guid = card["id"].replace("-", "")
-            note = genanki.Note(
+            note = TimestampedNote(
                 model=model,
                 fields=[
                     f"{card['front']}{front_audio_tag}",
                     f"{card['back']}{back_audio_tag}",
                 ],
                 guid=note_guid,
+                updated_at=card.get("updated_at"),
             )
             anki_deck.add_note(note)
 
