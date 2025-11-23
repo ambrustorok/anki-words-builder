@@ -17,6 +17,16 @@ router = APIRouter(prefix="/session")
 
 
 def _build_logout_url(request: Request) -> str:
+    origin = request.headers.get("Origin")
+    if origin:
+        return f"{origin.rstrip('/')}/cdn-cgi/access/logout"
+
+    forwarded_host = request.headers.get("X-Forwarded-Host")
+    forwarded_proto = request.headers.get("X-Forwarded-Proto", request.url.scheme)
+    if forwarded_host:
+        base = f"{forwarded_proto}://{forwarded_host}"
+        return f"{base.rstrip('/')}/cdn-cgi/access/logout"
+
     base = f"{request.url.scheme}://{request.url.netloc}"
     return f"{base}/cdn-cgi/access/logout"
 
