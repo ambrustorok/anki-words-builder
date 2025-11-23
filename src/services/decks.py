@@ -67,9 +67,13 @@ def get_field_library() -> List[dict]:
     return [deepcopy(field) for field in FIELD_LIBRARY]
 
 
-def _normalize_field(entry: dict) -> dict:
+def _normalize_field(entry: dict) -> Optional[dict]:
     key = entry.get("key")
-    base = FIELD_BY_KEY.get(key, {})
+    if not key:
+        return None
+    base = FIELD_BY_KEY.get(key)
+    if not base:
+        return None
     normalized = {
         "key": key,
         "label": entry.get("label") or base.get("label") or key,
@@ -95,19 +99,26 @@ def normalize_field_schema(schema: Optional[List[dict]]) -> List[dict]:
         if not entry or not entry.get("key"):
             continue
         normalized_field = _normalize_field(entry)
+        if not normalized_field:
+            continue
         normalized.append(normalized_field)
         seen_keys.add(normalized_field["key"])
     if "foreign_phrase" not in seen_keys:
-        normalized.insert(0, _normalize_field({"key": "foreign_phrase"}))
+        default_foreign = _normalize_field({"key": "foreign_phrase"})
+        if default_foreign:
+            normalized.insert(0, default_foreign)
     return normalized
 
 
 def default_field_schema():
-    return [
-        _normalize_field(field)
-        for field in FIELD_LIBRARY
-        if field.get("default_enabled", True)
-    ]
+    schema: List[dict] = []
+    for field in FIELD_LIBRARY:
+        if not field.get("default_enabled", True):
+            continue
+        normalized = _normalize_field(field)
+        if normalized:
+            schema.append(normalized)
+    return schema
 
 
 def default_generation_prompts():
