@@ -1,13 +1,14 @@
 import io
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..services import cards as card_service
 from ..services import decks as deck_service
 from ..services import exporter as export_service
+from ..services import backups as backup_service
 from ..settings import TARGET_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid
 
@@ -188,3 +189,31 @@ def export_deck(deck_id: str, user=Depends(get_current_user)):
             "Content-Disposition": f'attachment; filename="{filename_slug}.apkg"'
         },
     )
+
+
+@router.get("/{deck_id}/backup")
+def backup_deck(deck_id: str, user=Depends(get_current_user)):
+    deck_uuid = parse_uuid(deck_id, entity="Deck")
+    deck = deck_service.get_deck(deck_uuid, user["id"])
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found.")
+    cards = card_service.get_cards_for_backup(user["id"], deck_uuid)
+    archive = backup_service.create_backup_archive(deck, cards)
+    filename_slug = deck["name"].lower().replace(" ", "_")
+    return StreamingResponse(
+        io.BytesIO(archive),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{filename_slug}.awdeck"'
+        },
+    )
+
+
+@router.post("/import")
+async def import_deck(file: UploadFile = File(...), user=Depends(get_current_user)):
+    contents = await file.read()
+    try:
+        deck = backup_service.import_backup(user["id"], contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"deck": deck}

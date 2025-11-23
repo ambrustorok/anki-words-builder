@@ -275,6 +275,45 @@ def get_cards_for_export(
     return export_rows
 
 
+def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT c.id,
+                       c.card_group_id,
+                       c.direction,
+                       c.payload,
+                       c.created_at,
+                       c.updated_at,
+                       c.front_audio,
+                       c.back_audio,
+                       c.audio_filename
+                FROM cards c
+                WHERE c.owner_id = %s AND c.deck_id = %s
+                ORDER BY c.created_at ASC
+                """,
+                (_uuid(owner_id), _uuid(deck_id)),
+            )
+            rows = cur.fetchall()
+    cards = []
+    for row in rows:
+        cards.append(
+            {
+                "id": row["id"],
+                "card_group_id": row["card_group_id"],
+                "direction": row["direction"],
+                "payload": row["payload"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "front_audio": bytes(row["front_audio"]) if row["front_audio"] else None,
+                "back_audio": bytes(row["back_audio"]) if row["back_audio"] else None,
+                "audio_filename": row.get("audio_filename"),
+            }
+        )
+    return cards
+
+
 def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -445,3 +484,59 @@ def get_card_audio(owner_id: uuid.UUID, card_id: uuid.UUID, side: str) -> Option
             if not row or not row[0]:
                 return None
             return bytes(row[0])
+
+
+def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) -> int:
+    if not cards:
+        return 0
+    group_map: Dict[str, uuid.UUID] = {}
+    inserted = 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for card in cards:
+                direction = card.get("direction")
+                if direction not in ("forward", "backward"):
+                    continue
+                original_group = card.get("card_group_id")
+                group_key = str(original_group) if original_group else str(uuid.uuid4())
+                mapped_group = group_map.setdefault(group_key, uuid.uuid4())
+                new_card_id = uuid.uuid4()
+                payload = card.get("payload") or {}
+                created_at = card.get("created_at")
+                updated_at = card.get("updated_at") or created_at
+                front_audio = card.get("front_audio")
+                back_audio = card.get("back_audio")
+                cur.execute(
+                    """
+                    INSERT INTO cards (
+                        id,
+                        card_group_id,
+                        deck_id,
+                        owner_id,
+                        direction,
+                        payload,
+                        front_audio,
+                        back_audio,
+                        audio_filename,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        _uuid(new_card_id),
+                        _uuid(mapped_group),
+                        _uuid(deck_id),
+                        _uuid(owner_id),
+                        direction,
+                        Json(payload),
+                        Binary(front_audio) if front_audio else None,
+                        Binary(back_audio) if back_audio else None,
+                        card.get("audio_filename"),
+                        created_at,
+                        updated_at,
+                    ),
+                )
+                inserted += 1
+        conn.commit()
+    return inserted
