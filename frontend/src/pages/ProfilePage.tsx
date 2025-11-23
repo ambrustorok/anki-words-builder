@@ -2,8 +2,8 @@ import { FormEvent, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
-import { useSession } from "../lib/session";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { getCloudflareLogoutUrl } from "../lib/logout";
 
 interface ProfileResponse {
   user: {
@@ -18,7 +18,6 @@ interface ProfileResponse {
 }
 
 export function ProfilePage() {
-  const session = useSession();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["profile"],
     queryFn: () => apiFetch<ProfileResponse>("/profile")
@@ -85,8 +84,7 @@ export function ProfilePage() {
     const confirmed = window.confirm("Delete your profile and all decks?");
     if (!confirmed) return;
     const response = await apiFetch<{ logoutUrl?: string }>("/profile", { method: "DELETE" });
-    const fallbackLogout = `${window.location.origin}/cdn-cgi/access/logout`;
-    window.location.href = response.logoutUrl ?? session.data?.logoutUrl ?? fallbackLogout;
+    window.location.href = response.logoutUrl ?? getCloudflareLogoutUrl();
   };
 
   return (
