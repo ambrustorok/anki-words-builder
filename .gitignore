@@ -179,3 +179,4 @@ cython_debug/
 data/
 media/
 extracted_audi
+frontend/node_modules/

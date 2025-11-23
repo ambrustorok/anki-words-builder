@@ -1,5 +1,5 @@
 # Anki Words Builder
-Anki Words Builder is a FastAPI-powered language learning companion that helps you create structured, multi-language decks for [Anki](https://apps.ankiweb.net/). It focuses on storing rich field data (foreign phrase, native phrase, dictionary lookups, etc.) and only formats cards when presenting them to the user or exporting.
+Anki Words Builder is a FastAPI + React language learning companion that helps you create structured, multi-language decks for [Anki](https://apps.ankiweb.net/). The backend now exposes a JSON API and the new React frontend consumes it for a responsive SPA experience while keeping the original feature set (deck/card CRUD, Cloudflare-authenticated profiles, per-field generation, exports, and admin tooling).
 
 ## Features
 
@@ -10,12 +10,63 @@ Anki Words Builder is a FastAPI-powered language learning companion that helps y
 - **Custom TTS controls** so you can pick one of the OpenAI voices (alloy/ash/ballad/coral/echo/fable/nova/onyx/sage/shimmer or random) and set streaming instructions per card.
 - **Opinionated exports** that output English-front and Foreign-front directions exactly as described (including example sentences, dictionary notes, and audio on the requested side).
 - **Full deck/card CRUD** with inline regeneration of every field, audio previews, and editable per-deck prompt templates.
-- **FastAPI + Jinja templates** for a lightweight UI that runs well on Raspberry Pi deployments.
-- **Tailwind-powered UI** for a friendlier grid layout across dashboard, deck management, and the new card form, with automatic light/dark theming that follows your system setting.
+- **FastAPI JSON API + React SPA** so the UI can evolve independently and stay responsive during heavy generation tasks.
+- **Tailwind-powered components** for the dashboard, deck editor, card workflow, and admin console with automatic light/dark theming.
+- **Built-in theme toggle** so you can switch between light and dark styles without reloading.
 - **Multi-email + data control** so you can link multiple Cloudflare-approved addresses to one account and wipe everything (decks, cards, keys) in a single click when needed.
 - **Admin console + CLI tooling** so protected emails (like `local@example.com`) can audit, edit, or delete any profile and grant admin access from the command line.
 
-## Installation
+## Development setup
+
+The project now runs as two services (FastAPI API + React SPA) coordinated through Docker with hot-reload volumes, so you rarely rebuild the containers while iterating.
+
+### 1. Environment
+
+Create a `.env` file with the Postgres credentials (and optional overrides already supported by the legacy stack):
+
+```dotenv
+POSTGRES_USER=anki
+POSTGRES_PASSWORD=anki
+POSTGRES_DB=anki_words
+OPENAI_API_KEY=your_server_default_key
+```
+
+The backend still supports `LOCAL_USER_EMAIL`, `ALLOW_LOCAL_USER`, `LOCAL_ALWAYS_ADMIN_EMAIL`, and `ADDITIONAL_ADMIN_EMAILS`. You can also override `FRONTEND_ORIGINS` (comma-separated list) if you run the SPA from a different host than `http://localhost:5173`.
+
+### 2. Docker (recommended)
+
+```bash
+docker compose up --build
+```
+
+- API: http://localhost:8000 (JSON endpoints live under `/api`).
+- SPA: http://localhost:5173 (Vite dev server with HMR).
+- Database: Postgres 16 with a named volume (`postgres_data`) so you can destroy/recreate containers without losing data.
+
+Because the compose file mounts the repo into the containers and uses `uvicorn --reload` / `vite --host`, code edits are picked up instantly without rebuilding.
+
+### 3. Local development without Docker
+
+Backend (requires [uv](https://docs.astral.sh/uv/#getting-started)):
+
+```bash
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+uv run uvicorn src.app:app --reload --port 8000
+```
+
+Frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Set `VITE_API_URL=http://localhost:8000/api` if you run the API on another host/port.
+
+## Legacy (CLI-only) installation
 
 To install Anki Words Builder, follow these steps:
 

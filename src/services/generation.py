@@ -25,6 +25,10 @@ DEFAULT_PROMPTS = {
             "Keep it natural and respond with only the sentence."
         ),
     },
+    "reverse_translation": {
+        "system": "You translate between languages and respond concisely.",
+        "user": "Translate '{native_phrase}' from {native_language} to {target_language}. Respond with only the translation.",
+    },
 }
 
 
@@ -70,6 +74,31 @@ def generate_dictionary(client: OpenAI, prompts: Dict[str, Dict[str, str]], cont
 def generate_sentence(client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]) -> str:
     prompt_cfg = prompts.get("sentence") or DEFAULT_PROMPTS["sentence"]
     return _run_completion(client, prompt_cfg, context)
+
+
+def generate_foreign_from_native(
+    client: OpenAI,
+    prompts: Dict[str, Dict[str, str]],
+    native_phrase: str,
+    native_language: str,
+    target_language: str,
+) -> str:
+    prompt_cfg = prompts.get("reverse_translation") or DEFAULT_PROMPTS["reverse_translation"]
+    user_template = prompt_cfg.get("user") or DEFAULT_PROMPTS["reverse_translation"]["user"]
+    user_prompt = user_template.format(
+        native_phrase=native_phrase,
+        native_language=native_language,
+        target_language=target_language,
+    )
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        temperature=0.2,
+        messages=[
+            {"role": "system", "content": prompt_cfg.get("system") or DEFAULT_PROMPTS["reverse_translation"]["system"]},
+            {"role": "user", "content": user_prompt},
+        ],
+    )
+    return response.choices[0].message.content.strip()
 
 
 def _can_generate_field(field_schema: Optional[List[dict]], field_key: str) -> bool:
