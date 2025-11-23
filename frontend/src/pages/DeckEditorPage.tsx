@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -7,18 +7,47 @@ import { LoadingScreen } from "../components/LoadingScreen";
 import { FieldSchemaEditor, FieldSchemaEntry, FieldOption } from "../components/FieldSchemaEditor";
 import type { DeckDetailResponse } from "../types";
 
+const PROMPT_KEYS = ["translation", "dictionary", "sentence"] as const;
+type PromptKey = (typeof PROMPT_KEYS)[number];
+type PromptValue = { system: string; user: string };
+type PromptState = Record<PromptKey, PromptValue>;
+type PromptConfig = { system?: string; user?: string };
+type PromptLibrary = Record<string, PromptConfig>;
+
 interface DeckOptionsResponse {
   fieldLibrary: FieldOption[];
   defaultFieldSchema: FieldSchemaEntry[];
   targetLanguageOptions: string[];
   audioInstructionsTemplate: string;
+  defaultGenerationPrompts: PromptLibrary;
 }
 
-const buildDefaultPrompts = () => ({
-  translation: { system: "", user: "" },
-  dictionary: { system: "", user: "" },
-  sentence: { system: "", user: "" }
-});
+const buildDefaultPrompts = (defaults?: PromptLibrary): PromptState => {
+  return PROMPT_KEYS.reduce((acc, key) => {
+    const source = defaults?.[key];
+    acc[key] = {
+      system: source?.system ?? "",
+      user: source?.user ?? ""
+    };
+    return acc;
+  }, {} as PromptState);
+};
+
+const promptsEqual = (a?: PromptState | null, b?: PromptState | null) => {
+  if (!a || !b) return false;
+  return PROMPT_KEYS.every((key) => a[key].system === b[key].system && a[key].user === b[key].user);
+};
+
+const mergeGenerationPrompts = (base: PromptLibrary | null, visible: PromptState): PromptLibrary => {
+  const merged: PromptLibrary = { ...(base ?? {}) };
+  PROMPT_KEYS.forEach((key) => {
+    merged[key] = {
+      ...(merged[key] ?? {}),
+      ...visible[key]
+    };
+  });
+  return merged;
+};
 
 interface Props {
   mode: "create" | "edit";
@@ -32,9 +61,13 @@ export function DeckEditorPage({ mode }: Props) {
   const [fieldSchema, setFieldSchema] = useState<FieldSchemaEntry[]>([]);
   const [audioInstructions, setAudioInstructions] = useState("");
   const [audioEnabled, setAudioEnabled] = useState(true);
-  const [prompts, setPrompts] = useState(buildDefaultPrompts);
+  const [prompts, setPrompts] = useState<PromptState>(() => buildDefaultPrompts());
+  const [initialPrompts, setInitialPrompts] = useState<PromptState | null>(null);
+  const [fullGenerationPrompts, setFullGenerationPrompts] = useState<PromptLibrary | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  const loadedDeckIdRef = useRef<string | null>(null);
+  const audioTemplateRef = useRef("");
 
   const { data: options, isLoading: optionsLoading } = useQuery({
     queryKey: ["deck-options"],
@@ -48,47 +81,78 @@ export function DeckEditorPage({ mode }: Props) {
   });
 
   useEffect(() => {
+    audioTemplateRef.current = options?.audioInstructionsTemplate ?? "";
+  }, [options]);
+
+  useEffect(() => {
     if (options && mode === "create") {
+      const defaults = buildDefaultPrompts(options.defaultGenerationPrompts);
       setFieldSchema(options.defaultFieldSchema);
       setAudioInstructions(options.audioInstructionsTemplate);
       setTargetLanguage(options.targetLanguageOptions[0] ?? "");
+      setPrompts(defaults);
+      setInitialPrompts(defaults);
+      setFullGenerationPrompts({ ...(options.defaultGenerationPrompts ?? {}) });
+      loadedDeckIdRef.current = null;
     }
   }, [options, mode]);
 
   useEffect(() => {
     if (mode === "edit" && deckData) {
+      const deckIdentifier = deckData.deck.id;
+      if (loadedDeckIdRef.current === deckIdentifier) {
+        return;
+      }
+      loadedDeckIdRef.current = deckIdentifier;
       setName(deckData.deck.name);
       setTargetLanguage(deckData.deck.target_language);
       setFieldSchema(deckData.deck.field_schema);
-      setAudioInstructions(
-        (deckData.deck.prompt_templates?.audio as { instructions?: string })?.instructions ?? options?.audioInstructionsTemplate ?? ""
-      );
+      const audioTemplate =
+        (deckData.deck.prompt_templates?.audio as { instructions?: string })?.instructions ?? audioTemplateRef.current;
+      setAudioInstructions(audioTemplate);
       setAudioEnabled(Boolean((deckData.deck.prompt_templates?.audio as { enabled?: boolean })?.enabled ?? true));
-      const defaults = buildDefaultPrompts();
-      const generationPrompts = (deckData.generationPrompts ?? {}) as typeof defaults;
-      setPrompts({
-        translation: generationPrompts.translation || defaults.translation,
-        dictionary: generationPrompts.dictionary || defaults.dictionary,
-        sentence: generationPrompts.sentence || defaults.sentence
-      });
+      const generationPrompts = (deckData.generationPrompts ?? {}) as PromptLibrary;
+      setFullGenerationPrompts({ ...generationPrompts });
+      const merged = buildDefaultPrompts(generationPrompts);
+      setPrompts(merged);
+      setInitialPrompts(merged);
     }
-  }, [deckData, mode, options]);
+  }, [deckData, mode]);
 
   if (optionsLoading || (mode === "edit" && deckLoading)) {
     return <LoadingScreen label="Loading deck editor" />;
   }
 
+  const handlePromptChange = (key: PromptKey, field: keyof PromptValue, value: string) => {
+    setPrompts((prev) => ({
+      ...prev,
+      [key]: {
+        ...prev[key],
+        [field]: value
+      }
+    }));
+    setFullGenerationPrompts((prev) => ({
+      ...(prev ?? {}),
+      [key]: {
+        ...((prev ?? {})[key] ?? {}),
+        [field]: value
+      }
+    }));
+  };
+
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
     setError("");
     try {
+      const promptsChanged = initialPrompts ? !promptsEqual(prompts, initialPrompts) : false;
+      const generationPromptsPayload = promptsChanged ? mergeGenerationPrompts(fullGenerationPrompts, prompts) : undefined;
       const payload = {
         name,
         targetLanguage,
         fieldSchema,
         audioInstructions,
         audioEnabled,
-        generationPrompts: prompts
+        generationPrompts: generationPromptsPayload
       };
       if (mode === "create") {
         const response = await apiFetch<{ deck: { id: string } }>("/decks", {
@@ -178,7 +242,7 @@ export function DeckEditorPage({ mode }: Props) {
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Generation prompts</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-3">
-          {(["translation", "dictionary", "sentence"] as const).map((key) => (
+          {PROMPT_KEYS.map((key) => (
             <div key={key} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
               <p className="text-sm font-semibold text-slate-900 capitalize dark:text-white">{key}</p>
               <textarea
@@ -186,14 +250,14 @@ export function DeckEditorPage({ mode }: Props) {
                 rows={3}
                 placeholder="System prompt"
                 value={prompts[key].system}
-                onChange={(event) => setPrompts((prev) => ({ ...prev, [key]: { ...prev[key], system: event.target.value } }))}
+                onChange={(event) => handlePromptChange(key, "system", event.target.value)}
               />
               <textarea
                 className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
                 rows={4}
                 placeholder="User prompt"
                 value={prompts[key].user}
-                onChange={(event) => setPrompts((prev) => ({ ...prev, [key]: { ...prev[key], user: event.target.value } }))}
+                onChange={(event) => handlePromptChange(key, "user", event.target.value)}
               />
             </div>
           ))}
