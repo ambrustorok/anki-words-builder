@@ -45,6 +45,10 @@ docker compose up --build
 
 Because the compose file mounts the repo into the containers and uses `uvicorn --reload` / `vite --host`, code edits are picked up instantly without rebuilding.
 
+**Cloudflare tunnel / remote access:**
+
+If you expose the Vite dev server through a Cloudflare Tunnel (or any non-localhost domain), Vite needs to know the host name. Copy `frontend/.env.example` to `frontend/.env` and add your domain to `VITE_ALLOWED_HOSTS` (comma-separated list). You can optionally set `VITE_API_URL` there too if the API sits behind a different host.
+
 ### 3. Local development without Docker
 
 Backend (requires [uv](https://docs.astral.sh/uv/#getting-started)):
