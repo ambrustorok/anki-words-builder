@@ -64,7 +64,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8100/api` if you run the API on another host/port.
+Set `VITE_API_URL` if you need a custom base URL; by default the frontend targets `http(s)://<current-host>:8100/api`, which works for both `localhost` and remote IP access.
 
 ## Legacy (CLI-only) installation
 
