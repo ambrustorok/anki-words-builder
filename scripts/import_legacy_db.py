@@ -27,7 +27,7 @@ from typing import Dict, List, Tuple
 import psycopg2
 from dotenv import load_dotenv
 from psycopg2 import sql
-from psycopg2.extras import RealDictCursor
+from psycopg2.extras import Json, RealDictCursor
 
 load_dotenv()
 
@@ -133,9 +133,14 @@ def copy_table(src_conn, dst_conn, table: str, pk: str) -> Tuple[int, int]:
         pk=sql.Identifier(pk),
     )
 
+    def prepare_value(value):
+        if isinstance(value, (dict, list)):
+            return Json(value)
+        return value
+
     with dst_conn.cursor() as dst_cur:
         for row in rows:
-            values = [row[col] for col in shared_columns]
+            values = [prepare_value(row[col]) for col in shared_columns]
             dst_cur.execute(insert_sql, values)
             if dst_cur.rowcount == 1:
                 inserted += 1
