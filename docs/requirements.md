@@ -28,5 +28,5 @@
 
 ## Development & Tooling
 - Application runs in Docker (FastAPI API + React SPA + Postgres) with hot-reload volumes and a single named Postgres volume for development data.
-- Frontend env var `VITE_API_URL` points to the API base (default `http://localhost:8100/api`); backend `FRONTEND_ORIGINS` controls CORS.
+- Frontend env vars control Cloudflare/tunnel behavior: `VITE_ALLOWED_HOSTS`, `VITE_DEV_PORT`, and `VITE_API_PROXY_TARGET` (used by Vite’s `/api` proxy) plus optional `VITE_API_URL` override for production builds. The dev server should be the only public entry point and proxy API calls back to the backend container.
 - Use Tailwind for styling, sticking to class-based theming (`dark:`) for both light and dark modes.
