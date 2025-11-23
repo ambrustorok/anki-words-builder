@@ -1,5 +1,6 @@
+import { ChangeEvent, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
@@ -12,7 +13,11 @@ interface DeckListResponse {
 
 export function DeckListPage() {
   const session = useSession();
-  const { data, isLoading, error } = useQuery({
+  const navigate = useNavigate();
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["decks"],
     queryFn: () => apiFetch<DeckListResponse>("/decks")
   });
@@ -24,54 +29,114 @@ export function DeckListPage() {
     return <p className="text-red-500">Failed to load decks: {(error as Error).message}</p>;
   }
 
+  const triggerImport = () => {
+    setImportError("");
+    fileInputRef.current?.click();
+  };
+
+  const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      const response = await apiFetch<{ deck: { id: string } }>("/decks/import", {
+        method: "POST",
+        body: formData
+      });
+      await refetch();
+      navigate(`/decks/${response.deck.id}`);
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setImporting(false);
+      event.target.value = "";
+    }
+  };
+
   return (
     <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-      <div className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Decks</h1>
-        {session.data?.needsOnboarding ? (
-          <Link to="/onboarding" className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200">
-            Finish onboarding
-          </Link>
-        ) : (
-          <Link to="/decks/new" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900">
-            New deck
-          </Link>
-        )}
+      <div className="flex flex-wrap items-start gap-4">
+        <div>
+          <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Decks</h1>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Review your study sets, edit prompts, or export backups in one place.
+          </p>
+        </div>
+        <div className="ml-auto flex flex-wrap gap-2">
+          {session.data?.needsOnboarding ? (
+            <Link to="/onboarding" className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200">
+              Finish onboarding
+            </Link>
+          ) : (
+            <Link to="/decks/new" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900">
+              New deck
+            </Link>
+          )}
+          <button
+            type="button"
+            className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200 disabled:opacity-60"
+            onClick={triggerImport}
+            disabled={importing}
+          >
+            {importing ? "Importing…" : "Import backup"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".awdeck,.zip"
+            className="hidden"
+            onChange={handleImportChange}
+          />
+        </div>
       </div>
-      <table className="mt-4 w-full text-sm">
-        <thead className="text-left text-xs uppercase tracking-wide text-slate-500 dark:text-slate-300">
-          <tr>
-            <th className="px-3 py-2">Name</th>
-            <th className="px-3 py-2">Entries</th>
-            <th className="px-3 py-2">Language</th>
-            <th className="px-3 py-2">Cards</th>
-            <th className="px-3 py-2">Created</th>
-            <th className="px-3 py-2">Last updated</th>
-            <th className="px-3 py-2 text-right">Actions</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-          {data?.decks?.map((deck) => (
-            <tr key={deck.id}>
-              <td className="px-3 py-2 font-medium text-brand">
-                <Link to={`/decks/${deck.id}`}>{deck.name}</Link>
-              </td>
-              <td className="px-3 py-2 text-slate-500 dark:text-slate-300">{deck.entry_count ?? 0}</td>
-              <td className="px-3 py-2 text-slate-500 dark:text-slate-300">{deck.target_language}</td>
-              <td className="px-3 py-2 text-slate-500 dark:text-slate-300">{deck.card_count ?? 0}</td>
-              <td className="px-3 py-2 text-slate-500 dark:text-slate-300">
-                {deck.created_at ? new Date(deck.created_at).toLocaleDateString() : "—"}
-              </td>
-              <td className="px-3 py-2 text-slate-500 dark:text-slate-300">
-                {deck.last_modified_at ? new Date(deck.last_modified_at).toLocaleDateString() : "—"}
-              </td>
-              <td className="px-3 py-2 text-right text-xs">
-                <DeckQuickActions deckId={deck.id} />
-              </td>
-            </tr>
+      {importError && <p className="mt-3 text-sm text-red-500">{importError}</p>}
+      {data?.decks?.length ? (
+        <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {data.decks.map((deck) => (
+            <article key={deck.id} className="rounded-2xl border border-slate-100 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+              <div className="flex items-start justify-between gap-2">
+                <div>
+                  <Link to={`/decks/${deck.id}`} className="text-lg font-semibold text-slate-900 hover:underline dark:text-white">
+                    {deck.name}
+                  </Link>
+                  <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                    {deck.target_language || "—"}
+                  </p>
+                </div>
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {deck.entry_count ?? 0} entries
+                </span>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-slate-500 dark:text-slate-400">
+                <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                  <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Cards</p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">{deck.card_count ?? 0}</p>
+                </div>
+                <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                  <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Created</p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">
+                    {deck.created_at ? new Date(deck.created_at).toLocaleDateString() : "—"}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                  <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Updated</p>
+                  <p className="text-base font-semibold text-slate-900 dark:text-white">
+                    {deck.last_modified_at ? new Date(deck.last_modified_at).toLocaleDateString() : "—"}
+                  </p>
+                </div>
+              </div>
+              <DeckQuickActions deckId={deck.id} variant="stacked" />
+            </article>
           ))}
-        </tbody>
-      </table>
+        </div>
+      ) : (
+        <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-300">
+          <p>No decks yet. Create one or import a backup to get started.</p>
+        </div>
+      )}
     </section>
   );
 }

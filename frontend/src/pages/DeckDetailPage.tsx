@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { apiFetch, API_BASE_URL } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
@@ -7,6 +7,7 @@ import type { DeckDetailResponse } from "../types";
 
 export function DeckDetailPage() {
   const { deckId } = useParams();
+  const navigate = useNavigate();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["deck", deckId],
     queryFn: () => apiFetch<DeckDetailResponse>(`/decks/${deckId}`),
@@ -19,7 +20,6 @@ export function DeckDetailPage() {
     await apiFetch(`/cards/groups/${groupId}`, { method: "DELETE" });
     refetch();
   };
-
   if (isLoading || !deckId) {
     return <LoadingScreen label="Loading deck" />;
   }
@@ -38,7 +38,7 @@ export function DeckDetailPage() {
             <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">{deck.name}</h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">Target language: {deck.target_language}</p>
           </div>
-          <div className="ml-auto flex gap-2">
+          <div className="ml-auto flex flex-wrap gap-2">
             <Link className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900" to={`/cards/new/${deck.id}`}>
               Add card
             </Link>
@@ -50,6 +50,12 @@ export function DeckDetailPage() {
               href={`${API_BASE_URL}/decks/${deck.id}/export`}
             >
               Export
+            </a>
+            <a
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200"
+              href={`${API_BASE_URL}/decks/${deck.id}/backup`}
+            >
+              Backup
             </a>
           </div>
         </div>
