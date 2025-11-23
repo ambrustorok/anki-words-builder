@@ -14,9 +14,9 @@ services:
       - .env
     volumes:
       - .:/app
-    command: uv run uvicorn src.app:app --host 0.0.0.0 --port 8000 --reload
+    command: uv run uvicorn src.app:app --host 0.0.0.0 --port 8100 --reload
     ports:
-      - "8000:8000"
+      - "8100:8100"
     depends_on:
       - db
 
@@ -24,7 +24,7 @@ services:
     image: node:20-alpine
     working_dir: /app
     environment:
-      VITE_API_URL: http://localhost:8000/api
+      VITE_API_URL: http://localhost:8100/api
     volumes:
       - ./frontend:/app
       - node_modules:/app/node_modules
@@ -46,7 +46,7 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
     ports:
-      - "6543:5432"
+      - "7654:5432"
 
 volumes:
   postgres_data:

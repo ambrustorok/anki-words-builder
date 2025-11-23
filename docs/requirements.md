@@ -28,5 +28,5 @@
 
 ## Development & Tooling
 - Application runs in Docker (FastAPI API + React SPA + Postgres) with hot-reload volumes and a single named Postgres volume for development data.
-- Frontend env var `VITE_API_URL` points to the API base (default `http://localhost:8000/api`); backend `FRONTEND_ORIGINS` controls CORS.
+- Frontend env var `VITE_API_URL` points to the API base (default `http://localhost:8100/api`); backend `FRONTEND_ORIGINS` controls CORS.
 - Use Tailwind for styling, sticking to class-based theming (`dark:`) for both light and dark modes.

@@ -39,7 +39,7 @@ The backend still supports `LOCAL_USER_EMAIL`, `ALLOW_LOCAL_USER`, `LOCAL_ALWAYS
 docker compose up --build
 ```
 
-- API: http://localhost:8000 (JSON endpoints live under `/api`).
+- API: http://localhost:8100 (JSON endpoints live under `/api`).
 - SPA: http://localhost:5173 (Vite dev server with HMR).
 - Database: Postgres 16 with a named volume (`postgres_data`) so you can destroy/recreate containers without losing data.
 
@@ -53,7 +53,7 @@ Backend (requires [uv](https://docs.astral.sh/uv/#getting-started)):
 uv venv
 source .venv/bin/activate
 uv pip install -e .
-uv run uvicorn src.app:app --reload --port 8000
+uv run uvicorn src.app:app --reload --port 8100
 ```
 
 Frontend:
@@ -64,7 +64,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL=http://localhost:8000/api` if you run the API on another host/port.
+Set `VITE_API_URL=http://localhost:8100/api` if you run the API on another host/port.
 
 ## Legacy (CLI-only) installation
 
@@ -109,7 +109,7 @@ To install Anki Words Builder, follow these steps:
 
 6. **Run the Application**:
     ```bash
-    uv run uvicorn src.app:app --reload --port 8000
+uv run uvicorn src.app:app --reload --port 8100
     ```
 
 ## Usage
