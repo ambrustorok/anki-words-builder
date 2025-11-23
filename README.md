@@ -77,7 +77,57 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL` if you need a custom base URL; by default the frontend reuses the current origin (e.g., your Cloudflare hostname) and appends `/api`, so proxies and tunnels work without extra setup.
+Set `VITE_API_URL` if you need a custom base URL; by default the frontend reuses the current origin (e.g., your Cloudflare hostname) and appends `/api`, so proxies and tunnels work without extra setup. 
+
+**Cloudflare logout**
+
+This app relies on Cloudflare Access for authentication. Logging out is handled entirely by Cloudflare: the SPA simply redirects the browser to `<your-domain>/cdn-cgi/access/logout`. This is expected – there is no separate backend logout endpoint.
+
+### 4. Import data from tag `0.2.1`
+
+If you still have decks/cards inside the legacy stack (tag `0.2.1`) you can import them into the current database without touching either backend:
+
+#### Copy/paste workflow (default env values)
+
+**Terminal 1 – Legacy DB (port `6543` from tag `0.2.1`):**
+
+```bash
+git clone https://github.com/ambrustorok/anki-words-builder.git anki-words-builder-legacy
+cd anki-words-builder-legacy
+git checkout 0.2.1
+cp .env.example .env  # POSTGRES_DB=POSTGRES_DB, POSTGRES_USER=POSTGRES_USER, POSTGRES_PASSWORD=POSTGRES_PASSWORD
+docker compose up db
+```
+
+**Terminal 2 – Current DB (port `7654`, main branch):**
+
+```bash
+git clone https://github.com/ambrustorok/anki-words-builder.git anki-words-builder-current
+cd anki-words-builder-current
+cp .env.example .env  # same defaults as above
+docker compose up db
+```
+
+**Terminal 3 – Import everything into the current DB:**
+
+```bash
+cd anki-words-builder-current
+uv run python scripts/import_legacy_db.py
+```
+
+The script reads from the legacy database on `localhost:6543` and writes into the current database on `localhost:7654`, copying `users`, `user_emails`, `user_api_keys`, `decks`, `cards`, and `audio_files`. Existing rows in the new database are never overwritten—`ON CONFLICT DO NOTHING` keeps whichever version you already have.
+
+To override any connection detail, set the corresponding environment variable before running the script:
+
+| legacy | current |
+| --- | --- |
+| `LEGACY_POSTGRES_HOST` | `POSTGRES_HOST` |
+| `LEGACY_POSTGRES_PORT` (defaults to `6543`) | `POSTGRES_PORT` (defaults to `7654`) |
+| `LEGACY_POSTGRES_DB` | `POSTGRES_DB` |
+| `LEGACY_POSTGRES_USER` | `POSTGRES_USER` |
+| `LEGACY_POSTGRES_PASSWORD` | `POSTGRES_PASSWORD` |
+
+All other values fall back to the ones defined in your `.env`.
 
 ## Legacy (CLI-only) installation
 
