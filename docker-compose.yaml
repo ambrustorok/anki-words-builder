@@ -24,13 +24,15 @@ services:
     image: node:20-alpine
     working_dir: /app
     environment:
-      VITE_API_URL: http://localhost:8100/api
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
+      VITE_DEV_PORT: ${VITE_DEV_PORT:-5173}
+      VITE_API_PROXY_TARGET: ${VITE_API_PROXY_TARGET:-http://backend:8100}
     volumes:
       - ./frontend:/app
       - node_modules:/app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port ${VITE_DEV_PORT:-5173}"
     ports:
-      - "5173:5173"
+      - "${VITE_DEV_PORT:-5173}:${VITE_DEV_PORT:-5173}"
     depends_on:
       - backend
 
