@@ -45,12 +45,33 @@ def _ensure_native_language(user: dict):
         raise HTTPException(status_code=428, detail="Complete onboarding first.")
 
 
+def _build_prompt_templates(overrides: Optional[dict]) -> Optional[dict]:
+    if not overrides:
+        return None
+    templates = deck_service.default_prompt_templates()
+    base_generation = templates.get("generation") or {}
+    generation = {key: dict(value) for key, value in base_generation.items()}
+    for key, value in overrides.items():
+        if not isinstance(value, dict):
+            continue
+        existing = generation.get(key, {})
+        updated = dict(existing)
+        if "system" in value:
+            updated["system"] = value["system"]
+        if "user" in value:
+            updated["user"] = value["user"]
+        generation[key] = updated
+    templates["generation"] = generation
+    return templates
+
+
 @router.get("/options")
 def deck_options(user=Depends(get_current_user)):
     return {
         "fieldLibrary": deck_service.get_field_library(),
         "defaultFieldSchema": deck_service.default_field_schema(),
         "audioInstructionsTemplate": deck_service.DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "defaultGenerationPrompts": deck_service.default_generation_prompts(),
         "targetLanguageOptions": TARGET_LANGUAGE_OPTIONS,
     }
 
@@ -70,11 +91,13 @@ def create_deck(payload: DeckPayload, user=Depends(get_current_user)):
     field_schema = None
     if payload.field_schema:
         field_schema = [field.to_dict() for field in payload.field_schema]
+    prompt_templates = _build_prompt_templates(payload.generation_prompts)
     deck = deck_service.create_deck(
         owner_id=user["id"],
         name=payload.name.strip(),
         target_language=target_language,
         field_schema=field_schema,
+        prompt_templates=prompt_templates,
         audio_instructions=payload.audio_instructions,
         audio_enabled=payload.audio_enabled,
     )
