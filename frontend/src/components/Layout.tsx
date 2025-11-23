@@ -1,6 +1,7 @@
 import { NavLink, Link } from "react-router-dom";
-import { useSession } from "../lib/session";
 import { ReactNode } from "react";
+import { useSession } from "../lib/session";
+import { getCloudflareLogoutUrl } from "../lib/logout";
 
 interface LayoutProps {
   children: ReactNode;
@@ -12,9 +13,7 @@ const linkClasses =
 export function Layout({ children }: LayoutProps) {
   const session = useSession();
   const user = session.data?.user;
-  const fallbackLogout =
-    typeof window !== "undefined" ? `${window.location.origin}/cdn-cgi/access/logout` : "/cdn-cgi/access/logout";
-  const logoutHref = session.data?.logoutUrl || fallbackLogout;
+  const logoutHref = getCloudflareLogoutUrl();
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
