@@ -75,41 +75,43 @@ export function DashboardPage() {
           )}
         </div>
         {data?.staleDecks?.length ? (
-          <div className="mt-4 overflow-hidden rounded-2xl border border-slate-100 dark:border-slate-800">
-            <table className="min-w-full divide-y divide-slate-100 text-sm dark:divide-slate-800">
-              <thead className="bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 dark:bg-slate-800 dark:text-slate-300">
-                <tr>
-                  <th className="px-4 py-2">Name</th>
-                  <th className="px-4 py-2">Entries</th>
-                  <th className="px-4 py-2">Language</th>
-                  <th className="px-4 py-2">Cards</th>
-                  <th className="px-4 py-2">Created</th>
-                  <th className="px-4 py-2">Last updated</th>
-                  <th className="px-4 py-2 text-right">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {data.staleDecks.map((deck) => (
-                  <tr key={deck.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/60">
-                    <td className="px-4 py-2 font-medium text-brand">
-                      <Link to={`/decks/${deck.id}`}>{deck.name}</Link>
-                    </td>
-                    <td className="px-4 py-2 text-slate-500 dark:text-slate-300">{deck.entry_count}</td>
-                    <td className="px-4 py-2 text-slate-500 dark:text-slate-300">{deck.target_language}</td>
-                    <td className="px-4 py-2 text-slate-500 dark:text-slate-300">{deck.card_count}</td>
-                    <td className="px-4 py-2 text-slate-500 dark:text-slate-300">
+          <div className="mt-4 grid gap-4 md:grid-cols-2">
+            {data.staleDecks.map((deck) => (
+              <article key={deck.id} className="rounded-2xl border border-slate-100 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <Link to={`/decks/${deck.id}`} className="text-lg font-semibold text-slate-900 hover:text-brand dark:text-white">
+                      {deck.name}
+                    </Link>
+                    <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {deck.target_language || "—"}
+                    </p>
+                  </div>
+                  <span className="rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                    {deck.entry_count ?? 0} entries
+                  </span>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                    <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Cards</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-white">{deck.card_count ?? 0}</p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                    <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Created</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-white">
                       {deck.created_at ? new Date(deck.created_at).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-slate-500 dark:text-slate-300">
+                    </p>
+                  </div>
+                  <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
+                    <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Updated</p>
+                    <p className="text-base font-semibold text-slate-900 dark:text-white">
                       {deck.last_modified_at ? new Date(deck.last_modified_at).toLocaleDateString() : "—"}
-                    </td>
-                    <td className="px-4 py-2 text-right text-xs">
-                      <DeckQuickActions deckId={deck.id} />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                    </p>
+                  </div>
+                </div>
+                <DeckQuickActions deckId={deck.id} variant="stacked" />
+              </article>
+            ))}
           </div>
         ) : (
           <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No decks yet.</p>
