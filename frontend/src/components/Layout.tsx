@@ -12,6 +12,9 @@ const linkClasses =
 export function Layout({ children }: LayoutProps) {
   const session = useSession();
   const user = session.data?.user;
+  const fallbackLogout =
+    typeof window !== "undefined" ? `${window.location.origin}/cdn-cgi/access/logout` : "/cdn-cgi/access/logout";
+  const logoutHref = session.data?.logoutUrl || fallbackLogout;
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
       <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
@@ -34,10 +37,10 @@ export function Layout({ children }: LayoutProps) {
                 Admin
               </NavLink>
             )}
-            {session.data?.logoutUrl && (
+            {logoutHref && (
               <a
                 className="rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
-                href={session.data.logoutUrl}
+                href={logoutHref}
               >
                 Log out
               </a>

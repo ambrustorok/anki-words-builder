@@ -85,7 +85,8 @@ export function ProfilePage() {
     const confirmed = window.confirm("Delete your profile and all decks?");
     if (!confirmed) return;
     const response = await apiFetch<{ logoutUrl?: string }>("/profile", { method: "DELETE" });
-    window.location.href = response.logoutUrl ?? session.data?.logoutUrl ?? "/";
+    const fallbackLogout = `${window.location.origin}/cdn-cgi/access/logout`;
+    window.location.href = response.logoutUrl ?? session.data?.logoutUrl ?? fallbackLogout;
   };
 
   return (
