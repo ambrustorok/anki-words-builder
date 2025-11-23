@@ -1,5 +1,3 @@
-import { useState } from "react";
-
 export interface FieldOption {
   key: string;
   label: string;
@@ -24,8 +22,6 @@ interface Props {
 }
 
 export function FieldSchemaEditor({ options, schema, onChange }: Props) {
-  const [customField, setCustomField] = useState({ key: "", label: "", description: "" });
-
   const schemaMap = new Map(schema.map((entry) => [entry.key, entry]));
 
   const toggleField = (option: FieldOption, enabled: boolean) => {
@@ -52,23 +48,6 @@ export function FieldSchemaEditor({ options, schema, onChange }: Props) {
     );
     onChange(next);
   };
-
-  const addCustomField = () => {
-    const key = customField.key.trim();
-    const label = customField.label.trim() || key;
-    if (!key) return;
-    if (schemaMap.has(key)) return;
-    const next = [...schema, { key, label, description: customField.description, required: false, auto_generate: false }];
-    onChange(next);
-    setCustomField({ key: "", label: "", description: "" });
-  };
-
-  const removeCustomField = (key: string) => {
-    const next = schema.filter((entry) => entry.key !== key);
-    onChange(next);
-  };
-
-  const customEntries = schema.filter((entry) => !options.some((opt) => opt.key === entry.key));
 
   return (
     <div className="space-y-4">
@@ -105,56 +84,6 @@ export function FieldSchemaEditor({ options, schema, onChange }: Props) {
           </div>
         );
       })}
-
-      <div className="rounded-xl border border-dashed border-slate-300 bg-white px-4 py-4 dark:border-slate-600 dark:bg-slate-900">
-        <p className="text-sm font-semibold text-slate-900 dark:text-white">Custom fields</p>
-        <div className="mt-3 grid gap-2 md:grid-cols-3">
-          <input
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-            placeholder="Key"
-            value={customField.key}
-            onChange={(event) => setCustomField((prev) => ({ ...prev, key: event.target.value }))}
-          />
-          <input
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-            placeholder="Label"
-            value={customField.label}
-            onChange={(event) => setCustomField((prev) => ({ ...prev, label: event.target.value }))}
-          />
-          <input
-            className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-950"
-            placeholder="Description"
-            value={customField.description}
-            onChange={(event) => setCustomField((prev) => ({ ...prev, description: event.target.value }))}
-          />
-        </div>
-        <button
-          type="button"
-          className="mt-3 rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900"
-          onClick={addCustomField}
-        >
-          Add field
-        </button>
-
-        {customEntries.length > 0 && (
-          <ul className="mt-3 space-y-2">
-            {customEntries.map((entry) => (
-              <li
-                key={entry.key}
-                className="flex items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-sm dark:border-slate-700"
-              >
-                <div>
-                  <p className="font-medium text-slate-900 dark:text-white">{entry.label}</p>
-                  {entry.description && <p className="text-xs text-slate-500 dark:text-slate-400">{entry.description}</p>}
-                </div>
-                <button type="button" className="text-xs text-red-500" onClick={() => removeCustomField(entry.key)}>
-                  Remove
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
     </div>
   );
 }
