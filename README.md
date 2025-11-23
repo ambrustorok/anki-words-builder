@@ -45,9 +45,18 @@ docker compose up --build
 
 Because the compose file mounts the repo into the containers and uses `uvicorn --reload` / `vite --host`, code edits are picked up instantly without rebuilding.
 
-**Cloudflare tunnel / remote access:**
+**Cloudflare tunnel / remote access**
 
-If you expose the Vite dev server through a Cloudflare Tunnel (or any non-localhost domain), Vite needs to know the host name. Copy `frontend/.env.example` to `frontend/.env` and add your domain to `VITE_ALLOWED_HOSTS` (comma-separated list). You can optionally set `VITE_API_URL` there too if the API sits behind a different host.
+Copy `frontend/.env.example` to `frontend/.env` and set:
+
+| variable | purpose |
+| --- | --- |
+| `VITE_ALLOWED_HOSTS` | Comma-separated list of hostnames the dev server should trust (e.g., your Cloudflare Tunnel URL). |
+| `VITE_DEV_PORT` | Change the dev server port if needed (defaults to `5173`). |
+| `VITE_API_PROXY_TARGET` | Where `/api` requests should be proxied during development (defaults to `http://backend:8100`). |
+| `VITE_API_URL` | Optional override for the API origin baked into the bundle; otherwise we reuse the current page origin and append `/api`. |
+
+Run `docker compose up --build` and expose only the frontend port (5173) via your Cloudflare Tunnel. The Vite dev server will proxy `/api` calls back to the backend container so the FastAPI app never needs to be exposed publicly.
 
 ### 3. Local development without Docker
 
@@ -68,7 +77,7 @@ npm install
 npm run dev
 ```
 
-Set `VITE_API_URL` if you need a custom base URL; by default the frontend targets `http(s)://<current-host>:8100/api`, which works for both `localhost` and remote IP access.
+Set `VITE_API_URL` if you need a custom base URL; by default the frontend reuses the current origin (e.g., your Cloudflare hostname) and appends `/api`, so proxies and tunnels work without extra setup.
 
 ## Legacy (CLI-only) installation
 

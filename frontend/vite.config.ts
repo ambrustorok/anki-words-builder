@@ -6,13 +6,22 @@ export default defineConfig(({ mode }) => {
   const allowedHostsEnv = env.VITE_ALLOWED_HOSTS?.split(",")
     .map((host) => host.trim())
     .filter(Boolean);
+  const devPort = Number(env.VITE_DEV_PORT || 5173);
+  const proxyTarget = env.VITE_API_PROXY_TARGET || "http://backend:8100";
 
   return {
     plugins: [react()],
     server: {
       host: true,
-      port: 5173,
-      allowedHosts: allowedHostsEnv && allowedHostsEnv.length > 0 ? allowedHostsEnv : true
+      port: devPort,
+      allowedHosts: allowedHostsEnv && allowedHostsEnv.length > 0 ? allowedHostsEnv : true,
+      proxy: {
+        "/api": {
+          target: proxyTarget,
+          changeOrigin: true,
+          secure: false
+        }
+      }
     }
   };
 });
