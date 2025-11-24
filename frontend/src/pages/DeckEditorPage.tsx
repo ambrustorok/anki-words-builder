@@ -70,6 +70,7 @@ export function DeckEditorPage({ mode }: Props) {
   const [deleting, setDeleting] = useState(false);
   const loadedDeckIdRef = useRef<string | null>(null);
   const audioTemplateRef = useRef("");
+  const isEdit = mode === "edit";
 
   const { data: options, isLoading: optionsLoading } = useQuery({
     queryKey: ["deck-options"],
@@ -191,10 +192,32 @@ export function DeckEditorPage({ mode }: Props) {
 
   return (
     <form className="space-y-6" onSubmit={handleSubmit}>
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <h1 className="text-xl font-semibold text-slate-900">
-          {mode === "create" ? "Create deck" : "Edit deck"}
-        </h1>
+      <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {mode === "create" ? "Create deck" : "Edit deck"}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Adjust the basics, schema, prompts, and audio defaults for this deck.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="submit"
+              className="rounded-full bg-brand px-6 py-2 text-sm font-semibold text-slate-900"
+            >
+              {mode === "create" ? "Create deck" : "Save changes"}
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-slate-300 px-6 py-2 text-sm dark:border-slate-600 dark:text-slate-200"
+              onClick={() => navigate(mode === "create" ? "/decks" : `/decks/${deckId}`)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <label className="text-sm text-slate-700 dark:text-slate-300">
             Name
@@ -222,6 +245,32 @@ export function DeckEditorPage({ mode }: Props) {
             </select>
           </label>
         </div>
+      </div>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Field schema</h2>
+        {options && (
+          <FieldSchemaEditor options={options.fieldLibrary} schema={fieldSchema} onChange={setFieldSchema} />
+        )}
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio settings</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Toggle audio generation and fine-tune the default instructions.
+            </p>
+          </div>
+          <label className="inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
+            <input
+              type="checkbox"
+              checked={audioEnabled}
+              onChange={(event) => setAudioEnabled(event.target.checked)}
+            />
+            Enable audio generation
+          </label>
+        </div>
         <label className="mt-4 block text-sm text-slate-700 dark:text-slate-300">
           Audio instructions
           <textarea
@@ -229,18 +278,13 @@ export function DeckEditorPage({ mode }: Props) {
             rows={3}
             value={audioInstructions}
             onChange={(event) => setAudioInstructions(event.target.value)}
+            disabled={!audioEnabled}
           />
         </label>
-        <label className="mt-2 flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400">
-          <input type="checkbox" checked={audioEnabled} onChange={(event) => setAudioEnabled(event.target.checked)} />
-          Enable audio generation
-        </label>
-      </section>
-
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Field schema</h2>
-        {options && (
-          <FieldSchemaEditor options={options.fieldLibrary} schema={fieldSchema} onChange={setFieldSchema} />
+        {!audioEnabled && (
+          <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+            Re-enable audio to edit the default instructions.
+          </p>
         )}
       </section>
 
@@ -271,28 +315,26 @@ export function DeckEditorPage({ mode }: Props) {
 
       {error && <p className="text-sm text-red-500">{error}</p>}
 
-      <div className="flex flex-wrap gap-3">
-        <button type="submit" className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-slate-900">
-          {mode === "create" ? "Create deck" : "Save changes"}
-        </button>
-        <button
-          type="button"
-          className="rounded-full border border-slate-300 px-6 py-3 text-sm dark:border-slate-600 dark:text-slate-200"
-          onClick={() => navigate(mode === "create" ? "/decks" : `/decks/${deckId}`)}
-        >
-          Cancel
-        </button>
-        {mode === "edit" && deckId && (
-          <button
-            type="button"
-            onClick={handleDelete}
-            disabled={deleting}
-            className="rounded-full border border-red-400 px-6 py-3 text-sm font-semibold text-red-700 disabled:opacity-60"
-          >
-            {deleting ? "Deleting…" : "Delete deck"}
-          </button>
-        )}
-      </div>
+      {isEdit && deckId && (
+        <section className="rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-400/40 dark:bg-red-500/10">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-red-700 dark:text-red-200">Danger zone</h2>
+              <p className="text-sm text-red-600 dark:text-red-100">
+                This permanently removes the deck and every card inside it.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={handleDelete}
+              disabled={deleting}
+              className="rounded-full border border-red-500 px-6 py-3 text-sm font-semibold text-red-600 disabled:opacity-60 dark:border-red-300 dark:text-red-100"
+            >
+              {deleting ? "Deleting…" : "Delete deck"}
+            </button>
+          </div>
+        </section>
+      )}
     </form>
   );
 }
