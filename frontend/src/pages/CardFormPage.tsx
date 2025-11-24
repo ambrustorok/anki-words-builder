@@ -356,20 +356,82 @@ export function CardFormPage({ mode }: Props) {
           </section>
         </>
       ) : (
-        <div className="rounded-3xl border border-dashed border-slate-300 bg-white p-6 text-sm text-slate-500 shadow-sm dark:border-slate-600 dark:bg-slate-900/70 dark:text-slate-300">
-          <div className="space-y-3">
-            <div className="h-4 w-1/3 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-            <div className="h-4 w-2/3 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-            <div className="h-4 w-1/2 rounded bg-slate-200 dark:bg-slate-800 animate-pulse" />
-          </div>
-          <p className="mt-4 text-sm">
-            Process the phrase to unlock detailed fields, or{" "}
-            <button className="font-semibold text-brand underline" onClick={() => setDetailsUnlocked(true)}>
-              edit manually anyway
-            </button>
-            .
-          </p>
-        </div>
+        <>
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Card details</h2>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                Populates after processing
+              </p>
+            </div>
+            <div className="mt-4 space-y-4">
+              {fieldSchema
+                .filter((field) => field.key !== inputFieldKey)
+                .map((field) => (
+                  <label key={field.key} className="block text-sm text-slate-700 dark:text-slate-300">
+                    {field.label}
+                    <textarea
+                      className={`mt-1 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
+                        isProcessing ? "animate-pulse" : ""
+                      }`}
+                      rows={field.required ? 3 : 2}
+                      value=""
+                      disabled
+                    />
+                  </label>
+                ))}
+            </div>
+            <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+              Process the phrase to unlock and auto-fill these fields, or{" "}
+              <button className="font-semibold text-brand underline" onClick={() => setDetailsUnlocked(true)}>
+                edit manually anyway
+              </button>
+              .
+            </p>
+          </section>
+
+          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
+              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Populates after processing</p>
+            </div>
+            <div className="mt-4 grid gap-4 md:grid-cols-2">
+              <label className="text-sm text-slate-700 dark:text-slate-300">
+                Voice
+                <div
+                  className={`mt-1 h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
+                    isProcessing ? "animate-pulse" : ""
+                  }`}
+                >
+                  Awaiting generation…
+                </div>
+              </label>
+              <label className="text-sm text-slate-700 dark:text-slate-300">
+                Audio URL
+                <div
+                  className={`mt-1 h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
+                    isProcessing ? "animate-pulse" : ""
+                  }`}
+                >
+                  Awaiting generation…
+                </div>
+              </label>
+            </div>
+            <label className="mt-4 block text-sm text-slate-700 dark:text-slate-300">
+              Audio instructions
+              <div
+                className={`mt-1 h-20 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
+                  isProcessing ? "animate-pulse" : ""
+                }`}
+              >
+                Awaiting generation…
+              </div>
+            </label>
+            <div className={`mt-4 h-20 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 ${isProcessing ? "animate-pulse" : ""}`}>
+              Audio will appear here after processing.
+            </div>
+          </section>
+        </>
       )}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
