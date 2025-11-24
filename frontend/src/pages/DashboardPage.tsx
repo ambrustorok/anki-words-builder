@@ -98,14 +98,14 @@ export function DashboardPage() {
                   </div>
                   <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
                     <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Created</p>
-                    <p className="text-base font-semibold text-slate-900 dark:text-white">
-                      {deck.created_at ? new Date(deck.created_at).toLocaleDateString() : "—"}
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {deck.created_at ? new Date(deck.created_at).toLocaleString() : "—"}
                     </p>
                   </div>
                   <div className="rounded-xl border border-slate-100 px-3 py-2 dark:border-slate-800">
                     <p className="uppercase text-[0.65rem] text-slate-400 dark:text-slate-500">Updated</p>
-                    <p className="text-base font-semibold text-slate-900 dark:text-white">
-                      {deck.last_modified_at ? new Date(deck.last_modified_at).toLocaleDateString() : "—"}
+                    <p className="text-sm font-semibold text-slate-900 dark:text-white">
+                      {deck.last_modified_at ? new Date(deck.last_modified_at).toLocaleString() : "—"}
                     </p>
                   </div>
                 </div>
