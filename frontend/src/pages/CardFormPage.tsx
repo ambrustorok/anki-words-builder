@@ -62,7 +62,12 @@ export function CardFormPage({ mode }: Props) {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
-  const [inputMode, setInputMode] = useState<"foreign" | "native">("foreign");
+  const [inputMode, setInputMode] = useState<"foreign" | "native">(() => {
+    if (mode === "edit") return "foreign";
+    if (typeof window === "undefined") return "foreign";
+    const stored = window.localStorage.getItem("awb-card-input-mode");
+    return stored === "native" ? "native" : "foreign";
+  });
   const [detailsUnlocked, setDetailsUnlocked] = useState(mode === "edit");
   const [isProcessing, setIsProcessing] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
@@ -94,9 +99,6 @@ export function CardFormPage({ mode }: Props) {
       setAudioPreferences(groupQuery.data.audioPreferences);
       setAudioEnabled(Boolean(groupQuery.data.deck.prompt_templates?.audio?.enabled ?? true));
       setDetailsUnlocked(true);
-      if (groupQuery.data.group.payload.native_phrase && !groupQuery.data.group.payload.foreign_phrase) {
-        setInputMode("native");
-      }
     }
   }, [groupQuery.data, mode]);
 
@@ -112,7 +114,7 @@ export function CardFormPage({ mode }: Props) {
 
   const fieldSchema = deck?.field_schema ?? [];
   const nativeFieldAvailable = fieldSchema.some((field) => field.key === "native_phrase");
-  const effectiveInputMode = !nativeFieldAvailable ? "foreign" : inputMode;
+  const effectiveInputMode = mode === "edit" ? "foreign" : !nativeFieldAvailable ? "foreign" : inputMode;
   const inputFieldKey = effectiveInputMode === "native" ? "native_phrase" : "foreign_phrase";
   const inputField = fieldSchema.find((field) => field.key === inputFieldKey);
   const activeInputMode = effectiveInputMode;
@@ -196,43 +198,67 @@ export function CardFormPage({ mode }: Props) {
   return (
     <section className="space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{deck.name}</h1>
-        <p className="text-sm text-slate-500 dark:text-slate-400">Target language: {deck.target_language}</p>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">
+              {mode === "create" ? `Add card · ${deck.name}` : `Edit card · ${deck.name}`}
+            </h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Target language: {deck.target_language}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button className="rounded-full bg-brand px-6 py-2 text-sm font-semibold text-slate-900" onClick={() => runAction("save")}>
+              {mode === "create" ? "Save card" : "Save changes"}
+            </button>
+            <button
+              type="button"
+              className="rounded-full border border-slate-300 px-6 py-2 text-sm text-slate-600 dark:border-slate-600 dark:text-slate-300"
+              onClick={() => navigate(`/decks/${deck.id}`)}
+            >
+              Cancel
+            </button>
+          </div>
+        </div>
       </div>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="text-sm font-semibold text-slate-900 dark:text-white">Pick your starting point</p>
+            <p className="text-sm font-semibold text-slate-900 dark:text-white">
+              {mode === "edit" ? "Edit phrase" : "Pick your starting point"}
+            </p>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Enter whichever phrase you know first, then let the generator fill in the rest.
+              {mode === "edit"
+                ? "Update the primary phrase before regenerating translations."
+                : "Enter whichever phrase you know first, then let the generator fill the rest."}
             </p>
           </div>
-          <div className="inline-flex overflow-hidden rounded-full border border-slate-200 dark:border-slate-700">
-            <button
-              type="button"
-              onClick={() => setInputMode("foreign")}
-              className={`px-4 py-2 text-sm font-medium transition ${
-                activeInputMode === "foreign"
-                  ? "bg-brand text-slate-900"
-                  : "bg-transparent text-slate-600 dark:text-slate-300"
-              }`}
-            >
-              Foreign phrase
-            </button>
-            <button
-              type="button"
-              disabled={!nativeFieldAvailable}
-              onClick={() => nativeFieldAvailable && setInputMode("native")}
-              className={`px-4 py-2 text-sm font-medium transition ${
-                activeInputMode === "native"
-                  ? "bg-brand text-slate-900"
-                  : "bg-transparent text-slate-600 dark:text-slate-300"
-              } ${nativeFieldAvailable ? "" : "opacity-50"}`}
-            >
-              Native phrase
-            </button>
-          </div>
+          {mode === "create" && (
+            <div className="inline-flex overflow-hidden rounded-full border border-slate-200 dark:border-slate-700">
+              <button
+                type="button"
+                onClick={() => setInputMode("foreign")}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  activeInputMode === "foreign"
+                    ? "bg-brand text-slate-900"
+                    : "bg-transparent text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                Foreign phrase
+              </button>
+              <button
+                type="button"
+                disabled={!nativeFieldAvailable}
+                onClick={() => nativeFieldAvailable && setInputMode("native")}
+                className={`px-4 py-2 text-sm font-medium transition ${
+                  activeInputMode === "native"
+                    ? "bg-brand text-slate-900"
+                    : "bg-transparent text-slate-600 dark:text-slate-300"
+                } ${nativeFieldAvailable ? "" : "opacity-50"}`}
+              >
+                Native phrase
+              </button>
+            </div>
+          )}
         </div>
 
         <form className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
@@ -248,20 +274,24 @@ export function CardFormPage({ mode }: Props) {
           </label>
         </form>
 
-        <div className="mt-4 flex flex-wrap gap-3">
-          <button
-            type="button"
-            onClick={() => runAction("populate_all")}
-            disabled={isProcessing}
-            className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
-          >
-            {isProcessing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" />}
-            Process input
-          </button>
-        </div>
-        <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-          This runs translation + generation and unlocks the remaining fields. You can always tweak them afterward.
-        </p>
+        {mode === "create" && (
+          <>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                onClick={() => runAction("populate_all")}
+                disabled={isProcessing}
+                className="inline-flex items-center gap-2 rounded-full bg-brand px-5 py-2 text-sm font-semibold text-slate-900 disabled:opacity-60"
+              >
+                {isProcessing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" />}
+                Process input
+              </button>
+            </div>
+            <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+              This runs translation + generation and unlocks the remaining fields. You can always tweak them afterward.
+            </p>
+          </>
+        )}
       </section>
 
       {detailsUnlocked ? (
@@ -461,18 +491,6 @@ export function CardFormPage({ mode }: Props) {
         </p>
       )}
 
-      <div className="flex flex-wrap gap-3">
-        <button className="rounded-full bg-brand px-6 py-3 text-sm font-semibold text-slate-900" onClick={() => runAction("save")}>
-          Save card
-        </button>
-        <button
-          type="button"
-          className="rounded-full border border-slate-300 px-6 py-3 text-sm text-slate-600 dark:border-slate-600 dark:text-slate-300"
-          onClick={() => navigate(`/decks/${deck.id}`)}
-        >
-          Cancel
-        </button>
-      </div>
     </section>
   );
 }
