@@ -74,7 +74,7 @@ def set_native_language(payload: NativeLanguagePayload, user=Depends(get_current
 @router.get("/overview")
 def dashboard_overview(user=Depends(get_current_user)):
     requires_onboarding = not bool(user.get("native_language"))
-    stale_decks = deck_service.list_least_recent_decks(user["id"], limit=3)
+    recent_decks = deck_service.list_recent_decks(user["id"], limit=6)
     recent_cards = card_service.list_recent_cards(
         user["id"],
         user.get("native_language"),
@@ -82,6 +82,6 @@ def dashboard_overview(user=Depends(get_current_user)):
     )
     return {
         "requiresOnboarding": requires_onboarding,
-        "staleDecks": stale_decks,
+        "recentDecks": recent_decks,
         "recentEntries": recent_cards,
     }

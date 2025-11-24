@@ -28,7 +28,7 @@ interface DashboardEntry {
 
 interface OverviewResponse {
   requiresOnboarding: boolean;
-  staleDecks: DashboardDeck[];
+  recentDecks: DashboardDeck[];
   recentEntries: DashboardEntry[];
 }
 
@@ -61,8 +61,8 @@ export function DashboardPage() {
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Least recently updated decks</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Focus on the decks that need your attention.</p>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Recently updated decks</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Jump back into the decks you've worked on lately.</p>
           </div>
           {data?.requiresOnboarding ? (
             <Link to="/onboarding" className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 dark:border-slate-600 dark:text-slate-200">
@@ -74,9 +74,9 @@ export function DashboardPage() {
             </Link>
           )}
         </div>
-        {data?.staleDecks?.length ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
-            {data.staleDecks.map((deck) => (
+        {data?.recentDecks?.length ? (
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {data.recentDecks.map((deck) => (
               <article key={deck.id} className="rounded-2xl border border-slate-100 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="flex items-start justify-between gap-2">
                   <div>
@@ -121,7 +121,7 @@ export function DashboardPage() {
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Last modified entries</h2>
         {data?.recentEntries?.length ? (
-          <div className="mt-4 grid gap-4 md:grid-cols-2">
+          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.recentEntries.map((card) => (
               <article key={card.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                 <div className="flex items-center justify-between text-xs uppercase text-slate-500 dark:text-slate-400">
