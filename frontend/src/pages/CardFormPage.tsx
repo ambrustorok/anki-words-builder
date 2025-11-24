@@ -87,11 +87,6 @@ export function CardFormPage({ mode }: Props) {
   }, [deck, mode, cardOptionsQuery.data?.defaultAudioInstructions]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    window.localStorage.setItem(STORAGE_KEYS.inputMode, inputMode);
-  }, [inputMode]);
-
-  useEffect(() => {
     if (mode === "edit" && groupQuery.data) {
       setPayload(groupQuery.data.group.payload);
       setDirections(groupQuery.data.group.directions);
@@ -323,13 +318,10 @@ export function CardFormPage({ mode }: Props) {
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                   value={audioPreferences.voice}
                   onChange={(event) =>
-                    setAudioPreferences((prev) => {
-                      const next = { ...prev, voice: event.target.value };
-                      if (typeof window !== "undefined") {
-                        window.localStorage.setItem(STORAGE_KEYS.audioVoice, next.voice);
-                      }
-                      return next;
-                    })
+                    setAudioPreferences((prev) => ({
+                      ...prev,
+                      voice: event.target.value
+                    }))
                   }
                 >
                   {cardOptionsQuery.data?.voices.map((voice) => (
