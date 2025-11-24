@@ -1,6 +1,6 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
@@ -33,11 +33,6 @@ const buildDefaultPrompts = (defaults?: PromptLibrary): PromptState => {
   }, {} as PromptState);
 };
 
-const promptsEqual = (a?: PromptState | null, b?: PromptState | null) => {
-  if (!a || !b) return false;
-  return PROMPT_KEYS.every((key) => a[key].system === b[key].system && a[key].user === b[key].user);
-};
-
 const mergeGenerationPrompts = (base: PromptLibrary | null, visible: PromptState): PromptLibrary => {
   const merged: PromptLibrary = { ...(base ?? {}) };
   PROMPT_KEYS.forEach((key) => {
@@ -49,6 +44,13 @@ const mergeGenerationPrompts = (base: PromptLibrary | null, visible: PromptState
   return merged;
 };
 
+type FieldSchemaPayloadEntry = Omit<FieldSchemaEntry, "auto_generate"> & { autoGenerate?: boolean };
+const serializeFieldSchema = (schema: FieldSchemaEntry[]): FieldSchemaPayloadEntry[] =>
+  schema.map(({ auto_generate, ...rest }) => ({
+    ...rest,
+    autoGenerate: auto_generate
+  }));
+
 interface Props {
   mode: "create" | "edit";
 }
@@ -56,13 +58,13 @@ interface Props {
 export function DeckEditorPage({ mode }: Props) {
   const { deckId } = useParams();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [name, setName] = useState("");
   const [targetLanguage, setTargetLanguage] = useState("");
   const [fieldSchema, setFieldSchema] = useState<FieldSchemaEntry[]>([]);
   const [audioInstructions, setAudioInstructions] = useState("");
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [prompts, setPrompts] = useState<PromptState>(() => buildDefaultPrompts());
-  const [initialPrompts, setInitialPrompts] = useState<PromptState | null>(null);
   const [fullGenerationPrompts, setFullGenerationPrompts] = useState<PromptLibrary | null>(null);
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
@@ -91,7 +93,6 @@ export function DeckEditorPage({ mode }: Props) {
       setAudioInstructions(options.audioInstructionsTemplate);
       setTargetLanguage(options.targetLanguageOptions[0] ?? "");
       setPrompts(defaults);
-      setInitialPrompts(defaults);
       setFullGenerationPrompts({ ...(options.defaultGenerationPrompts ?? {}) });
       loadedDeckIdRef.current = null;
     }
@@ -115,7 +116,6 @@ export function DeckEditorPage({ mode }: Props) {
       setFullGenerationPrompts({ ...generationPrompts });
       const merged = buildDefaultPrompts(generationPrompts);
       setPrompts(merged);
-      setInitialPrompts(merged);
     }
   }, [deckData, mode]);
 
@@ -144,12 +144,11 @@ export function DeckEditorPage({ mode }: Props) {
     event.preventDefault();
     setError("");
     try {
-      const promptsChanged = initialPrompts ? !promptsEqual(prompts, initialPrompts) : false;
-      const generationPromptsPayload = promptsChanged ? mergeGenerationPrompts(fullGenerationPrompts, prompts) : undefined;
+      const generationPromptsPayload = mergeGenerationPrompts(fullGenerationPrompts, prompts);
       const payload = {
         name,
         targetLanguage,
-        fieldSchema,
+        fieldSchema: serializeFieldSchema(fieldSchema),
         audioInstructions,
         audioEnabled,
         generationPrompts: generationPromptsPayload
@@ -159,9 +158,15 @@ export function DeckEditorPage({ mode }: Props) {
           method: "POST",
           json: payload
         });
+        await queryClient.invalidateQueries({ queryKey: ["decks"] });
+        await queryClient.invalidateQueries({ queryKey: ["overview"] });
         navigate(`/decks/${response.deck.id}`);
       } else if (deckId) {
         await apiFetch(`/decks/${deckId}`, { method: "PUT", json: payload });
+        await queryClient.invalidateQueries({ queryKey: ["deck", deckId] });
+        await queryClient.invalidateQueries({ queryKey: ["decks"] });
+        await queryClient.invalidateQueries({ queryKey: ["overview"] });
+        window.scrollTo({ top: 0, behavior: "smooth" });
         navigate(`/decks/${deckId}`);
       }
     } catch (err) {
