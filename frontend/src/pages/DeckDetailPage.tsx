@@ -80,15 +80,38 @@ export function DeckDetailPage() {
       <section className="space-y-4">
         {data?.cards?.length ? (
           data.cards.map((group) => (
-            <article key={group.group_id} className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+            <article
+              key={group.group_id}
+              role="button"
+              tabIndex={0}
+              aria-label="Edit card group"
+              onClick={() => navigate(`/cards/${group.group_id}/edit`)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  navigate(`/cards/${group.group_id}/edit`);
+                }
+              }}
+              className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/70"
+            >
               <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <span>Created {group.created_at ? new Date(group.created_at).toLocaleString() : "—"}</span>
                 <span>Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>
                 <div className="ml-auto flex gap-3 text-xs">
-                  <Link className="text-brand" to={`/cards/${group.group_id}/edit`}>
+                  <Link
+                    className="text-brand"
+                    to={`/cards/${group.group_id}/edit`}
+                    onClick={(event) => event.stopPropagation()}
+                  >
                     Edit
                   </Link>
-                  <button className="text-red-500" onClick={() => deleteCard(group.group_id)}>
+                  <button
+                    className="text-red-500"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      deleteCard(group.group_id);
+                    }}
+                  >
                     Delete
                   </button>
                 </div>
