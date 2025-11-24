@@ -61,9 +61,18 @@ def _should_generate_sentence(text: str) -> bool:
     return True
 
 
+def _strip_quotes(text: str) -> str:
+    if not text:
+        return text
+    trimmed = text.strip()
+    if (trimmed.startswith('"') and trimmed.endswith('"')) or (trimmed.startswith("'") and trimmed.endswith("'")):
+        return trimmed[1:-1].strip()
+    return trimmed
+
+
 def generate_translation(client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]) -> str:
     prompt_cfg = prompts.get("translation") or DEFAULT_PROMPTS["translation"]
-    return _run_completion(client, prompt_cfg, context)
+    return _strip_quotes(_run_completion(client, prompt_cfg, context))
 
 
 def generate_dictionary(client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]) -> str:
@@ -98,7 +107,7 @@ def generate_foreign_from_native(
             {"role": "user", "content": user_prompt},
         ],
     )
-    return response.choices[0].message.content.strip()
+    return _strip_quotes(response.choices[0].message.content.strip())
 
 
 def _can_generate_field(field_schema: Optional[List[dict]], field_key: str) -> bool:
