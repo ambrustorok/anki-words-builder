@@ -31,6 +31,9 @@ class DeckField(BaseModel):
             "auto_generate": self.auto_generate,
         }
 
+    class Config:
+        allow_population_by_field_name = True
+
 
 class DeckPayload(BaseModel):
     name: str
