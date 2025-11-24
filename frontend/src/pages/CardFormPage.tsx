@@ -26,6 +26,57 @@ interface Props {
   mode: "create" | "edit";
 }
 
+const LOCAL_PHRASES_KEY = "awb-card-start-phrases";
+const LOCAL_INPUT_MODE_KEY = "awb-card-input-mode";
+const LOCAL_AUDIO_VOICE_KEY = "awb-card-audio-voice";
+
+type PhraseKey = "foreign_phrase" | "native_phrase";
+type StoredPhrases = Partial<Record<PhraseKey, string>>;
+
+function getStoredPhrases(): StoredPhrases {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(LOCAL_PHRASES_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed === "object") {
+      return parsed as StoredPhrases;
+    }
+  } catch {
+    // ignore JSON issues
+  }
+  return {};
+}
+
+function persistStoredPhrases(updates: StoredPhrases) {
+  if (typeof window === "undefined") return;
+  const next = { ...getStoredPhrases(), ...updates };
+  try {
+    window.localStorage.setItem(LOCAL_PHRASES_KEY, JSON.stringify(next));
+  } catch {
+    // ignore storage quota issues
+  }
+}
+
+function clearStoredPhrases() {
+  if (typeof window === "undefined") return;
+  window.localStorage.removeItem(LOCAL_PHRASES_KEY);
+}
+
+function getStoredVoice(): string | null {
+  if (typeof window === "undefined") return null;
+  return window.localStorage.getItem(LOCAL_AUDIO_VOICE_KEY);
+}
+
+function persistStoredVoice(voice: string) {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(LOCAL_AUDIO_VOICE_KEY, voice);
+  } catch {
+    // ignore
+  }
+}
+
 export function CardFormPage({ mode }: Props) {
   const params = useParams();
   const navigate = useNavigate();
@@ -54,18 +105,19 @@ export function CardFormPage({ mode }: Props) {
   const deck = mode === "create" ? deckQuery.data?.deck : groupQuery.data?.deck;
   const deckIdForSubmit = deck?.id ?? deckIdParam ?? groupQuery.data?.deck.id;
 
-  const [payload, setPayload] = useState<Record<string, string>>({});
+  const [payload, setPayload] = useState<Record<string, string>>(() => (mode === "create" ? { ...getStoredPhrases() } : {}));
   const [directions, setDirections] = useState<string[]>(["forward", "backward"]);
   const [audioPreview, setAudioPreview] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
-  const [audioPreferences, setAudioPreferences] = useState({ voice: "random", instructions: "" });
+  const initialVoice = mode === "create" ? getStoredVoice() ?? "random" : "random";
+  const [audioPreferences, setAudioPreferences] = useState({ voice: initialVoice, instructions: "" });
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [inputMode, setInputMode] = useState<"foreign" | "native">(() => {
     if (mode === "edit") return "foreign";
     if (typeof window === "undefined") return "foreign";
-    const stored = window.localStorage.getItem("awb-card-input-mode");
+    const stored = window.localStorage.getItem(LOCAL_INPUT_MODE_KEY);
     return stored === "native" ? "native" : "foreign";
   });
   const [detailsUnlocked, setDetailsUnlocked] = useState(mode === "edit");
@@ -79,14 +131,20 @@ export function CardFormPage({ mode }: Props) {
         deck.field_schema.forEach((field) => {
           next[field.key] = prev[field.key] ?? "";
         });
+        if (mode === "create") {
+          persistStoredPhrases({
+            foreign_phrase: next.foreign_phrase ?? "",
+            native_phrase: next.native_phrase ?? ""
+          });
+        }
         return next;
       });
       setAudioEnabled(Boolean(deck.prompt_templates?.audio?.enabled ?? true));
       if (mode === "create" && cardOptionsQuery.data?.defaultAudioInstructions) {
-        setAudioPreferences({
-          voice: "random",
+        setAudioPreferences((prev) => ({
+          voice: prev.voice || getStoredVoice() || "random",
           instructions: cardOptionsQuery.data.defaultAudioInstructions.replace("{target_language}", deck.target_language)
-        });
+        }));
       }
     }
   }, [deck, mode, cardOptionsQuery.data?.defaultAudioInstructions]);
@@ -120,13 +178,35 @@ export function CardFormPage({ mode }: Props) {
   const activeInputMode = effectiveInputMode;
 
   const updateField = (field: DeckField, value: string) => {
-    setPayload((prev) => ({ ...prev, [field.key]: value }));
+    setPayload((prev) => {
+      const next = { ...prev, [field.key]: value };
+      if (
+        mode === "create" &&
+        (field.key === "foreign_phrase" || field.key === "native_phrase")
+      ) {
+        const phraseKey = field.key as PhraseKey;
+        persistStoredPhrases({ [phraseKey]: value });
+      }
+      return next;
+    });
   };
 
   const toggleDirection = (direction: "forward" | "backward") => {
     setDirections((prev) =>
       prev.includes(direction) ? prev.filter((dir) => dir !== direction) : [...prev, direction]
     );
+  };
+
+  const changeInputMode = (nextMode: "foreign" | "native") => {
+    setInputMode(nextMode);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(LOCAL_INPUT_MODE_KEY, nextMode);
+    }
+  };
+
+  const updateVoicePreference = (voice: string) => {
+    setAudioPreferences((prev) => ({ ...prev, voice }));
+    persistStoredVoice(voice);
   };
 
   const runAction = async (action: string) => {
@@ -154,11 +234,20 @@ export function CardFormPage({ mode }: Props) {
         }
       });
       if (response.status === "saved") {
+        if (mode === "create") {
+          clearStoredPhrases();
+        }
         navigate(`/decks/${response.deckId}`);
         return;
       }
       if (response.payload) {
         setPayload(response.payload);
+        if (mode === "create") {
+          persistStoredPhrases({
+            foreign_phrase: response.payload.foreign_phrase ?? "",
+            native_phrase: response.payload.native_phrase ?? ""
+          });
+        }
       }
       if (response.directions) {
         setDirections(response.directions);
@@ -236,7 +325,7 @@ export function CardFormPage({ mode }: Props) {
             <div className="inline-flex overflow-hidden rounded-full border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
-                onClick={() => setInputMode("foreign")}
+                onClick={() => changeInputMode("foreign")}
                 className={`px-4 py-2 text-sm font-medium transition ${
                   activeInputMode === "foreign"
                     ? "bg-brand text-slate-900"
@@ -248,7 +337,7 @@ export function CardFormPage({ mode }: Props) {
               <button
                 type="button"
                 disabled={!nativeFieldAvailable}
-                onClick={() => nativeFieldAvailable && setInputMode("native")}
+                onClick={() => nativeFieldAvailable && changeInputMode("native")}
                 className={`px-4 py-2 text-sm font-medium transition ${
                   activeInputMode === "native"
                     ? "bg-brand text-slate-900"
@@ -347,12 +436,7 @@ export function CardFormPage({ mode }: Props) {
                 <select
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                   value={audioPreferences.voice}
-                  onChange={(event) =>
-                    setAudioPreferences((prev) => ({
-                      ...prev,
-                      voice: event.target.value
-                    }))
-                  }
+                  onChange={(event) => updateVoicePreference(event.target.value)}
                 >
                   {cardOptionsQuery.data?.voices.map((voice) => (
                     <option key={voice} value={voice}>
@@ -419,45 +503,47 @@ export function CardFormPage({ mode }: Props) {
 
           {audioEnabled && (
             <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
-              <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Populates after processing</p>
-            </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="text-sm text-slate-700 dark:text-slate-300">
-                Voice
-                <div
-                  className={`mt-1 h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
-                    isProcessing ? "animate-pulse" : ""
-                  }`}
-                >
-                  Awaiting generation…
-                </div>
-              </label>
-              <label className="text-sm text-slate-700 dark:text-slate-300">
-                Audio URL
-                <div
-                  className={`mt-1 h-10 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
-                    isProcessing ? "animate-pulse" : ""
-                  }`}
-                >
-                  Awaiting generation…
-                </div>
-              </label>
-            </div>
-            <label className="mt-4 block text-sm text-slate-700 dark:text-slate-300">
-              Audio instructions
-              <div
-                className={`mt-1 h-20 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-400 dark:border-slate-700 dark:bg-slate-900/40 ${
-                  isProcessing ? "animate-pulse" : ""
-                }`}
-              >
-                Awaiting generation…
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
+                <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Populates after processing</p>
               </div>
-            </label>
-            <div className={`mt-4 h-20 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 ${isProcessing ? "animate-pulse" : ""}`}>
-              Audio will appear here after processing.
-            </div>
+              <div className="mt-4 grid gap-4 md:grid-cols-2">
+                <label className="text-sm text-slate-700 dark:text-slate-300">
+                  Voice
+                  <select
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                    value={audioPreferences.voice}
+                    onChange={(event) => updateVoicePreference(event.target.value)}
+                  >
+                    {cardOptionsQuery.data?.voices.map((voice) => (
+                      <option key={voice} value={voice}>
+                        {voice}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="text-sm text-slate-700 dark:text-slate-300">
+                  Audio URL
+                  <input
+                    className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                    placeholder="https://example.com/audio.mp3"
+                    value={audioUrl}
+                    onChange={(event) => setAudioUrl(event.target.value)}
+                  />
+                </label>
+              </div>
+              <label className="mt-4 block text-sm text-slate-700 dark:text-slate-300">
+                Audio instructions
+                <textarea
+                  className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
+                  rows={3}
+                  value={audioPreferences.instructions}
+                  onChange={(event) => setAudioPreferences((prev) => ({ ...prev, instructions: event.target.value }))}
+                />
+              </label>
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40">
+                Generate or upload audio to preview it here. Voice + instructions are already saved for the next run.
+              </div>
             </section>
           )}
         </>
