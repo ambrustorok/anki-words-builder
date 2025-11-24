@@ -55,6 +55,16 @@ FastAPI + React stack for creating bilingual study decks, powered by OpenAI gene
 
 Because the compose file mounts your working tree, edits to Python/TypeScript files hot-reload automatically (Uvicorn + Vite).
 
+5. **Create the first admin**
+
+   Once your Cloudflare-protected user has loaded the app at least once (so their profile exists), promote them via the CLI:
+
+   ```bash
+   docker compose exec backend uv run python -m src.cli users grant-admin you@example.com
+   ```
+
+   You can always rerun the command for new admins or list everyone with `docker compose exec backend uv run python -m src.cli users list`.
+
 ## Provisioning the First Admin
 
 1. Ensure the person who should be the initial admin can authenticate through Cloudflare and hit the SPA once (this creates their profile).
