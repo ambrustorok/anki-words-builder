@@ -1,15 +1,15 @@
 import psycopg2
 
-from ..setup import database, host, password, port, user
+from ..settings import POSTGRES_DB, POSTGRES_HOST, POSTGRES_PASSWORD, POSTGRES_PORT, POSTGRES_USER
 
 
 def save_audio_to_postgres(text, audio_binary):
     conn = psycopg2.connect(
-        host=host,
-        database=database,
-        user=user,
-        password=password,
-        port=port,
+        host=POSTGRES_HOST,
+        database=POSTGRES_DB,
+        user=POSTGRES_USER,
+        password=POSTGRES_PASSWORD,
+        port=POSTGRES_PORT,
     )
     cur = conn.cursor()
     cur.execute(

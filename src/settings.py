@@ -22,3 +22,11 @@ FRONTEND_ORIGINS: List[str] = [
 ]
 if not FRONTEND_ORIGINS:
     FRONTEND_ORIGINS = DEFAULT_FRONTEND_ORIGINS
+
+POSTGRES_HOST = os.getenv("POSTGRES_HOST", "localhost")
+POSTGRES_DB = os.getenv("POSTGRES_DB", "postgres")
+POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
+POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
+POSTGRES_PORT = os.getenv("POSTGRES_PORT", "7654")
+
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt5-5.1-chat-latest")

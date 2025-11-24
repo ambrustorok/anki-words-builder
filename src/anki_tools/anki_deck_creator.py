@@ -6,7 +6,7 @@ from contextlib import contextmanager
 import tempfile
 import uuid
 
-from ..setup import host, database, user, password, port
+from ..settings import POSTGRES_DB, POSTGRES_HOST, POSTGRES_PASSWORD, POSTGRES_PORT, POSTGRES_USER
 from utils import convert_audio_to_numpy
 
 
@@ -22,11 +22,11 @@ class AnkiDeckManager:
     @contextmanager
     def _get_connection(self):
         conn = psycopg2.connect(
-            host=host,
-            database=database,
-            user=user,
-            password=password,
-            port=port,
+            host=POSTGRES_HOST,
+            database=POSTGRES_DB,
+            user=POSTGRES_USER,
+            password=POSTGRES_PASSWORD,
+            port=POSTGRES_PORT,
         )
         try:
             yield conn
