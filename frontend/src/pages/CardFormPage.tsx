@@ -59,6 +59,7 @@ export function CardFormPage({ mode }: Props) {
   const [audioPreview, setAudioPreview] = useState("");
   const [audioUrl, setAudioUrl] = useState("");
   const [audioPreferences, setAudioPreferences] = useState({ voice: "random", instructions: "" });
+  const [audioEnabled, setAudioEnabled] = useState(true);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [inputMode, setInputMode] = useState<"foreign" | "native">("foreign");
@@ -75,6 +76,7 @@ export function CardFormPage({ mode }: Props) {
         });
         return next;
       });
+      setAudioEnabled(Boolean(deck.prompt_templates?.audio?.enabled ?? true));
       if (mode === "create" && cardOptionsQuery.data?.defaultAudioInstructions) {
         setAudioPreferences({
           voice: "random",
@@ -85,11 +87,17 @@ export function CardFormPage({ mode }: Props) {
   }, [deck, mode, cardOptionsQuery.data?.defaultAudioInstructions]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+    window.localStorage.setItem(STORAGE_KEYS.inputMode, inputMode);
+  }, [inputMode]);
+
+  useEffect(() => {
     if (mode === "edit" && groupQuery.data) {
       setPayload(groupQuery.data.group.payload);
       setDirections(groupQuery.data.group.directions);
       setAudioPreview(groupQuery.data.audioPreview);
       setAudioPreferences(groupQuery.data.audioPreferences);
+      setAudioEnabled(Boolean(groupQuery.data.deck.prompt_templates?.audio?.enabled ?? true));
       setDetailsUnlocked(true);
       if (groupQuery.data.group.payload.native_phrase && !groupQuery.data.group.payload.foreign_phrase) {
         setInputMode("native");
@@ -255,15 +263,6 @@ export function CardFormPage({ mode }: Props) {
             {isProcessing && <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-900/30 border-t-slate-900" />}
             Process input
           </button>
-          {!detailsUnlocked && (
-            <button
-              type="button"
-              onClick={() => setDetailsUnlocked(true)}
-              className="rounded-full border border-slate-300 px-5 py-2 text-sm text-slate-600 dark:border-slate-600 dark:text-slate-300"
-            >
-              Edit manually instead
-            </button>
-          )}
         </div>
         <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
           This runs translation + generation and unlocks the remaining fields. You can always tweak them afterward.
@@ -304,7 +303,8 @@ export function CardFormPage({ mode }: Props) {
             </div>
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+          {audioEnabled && (
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
               <div className="flex flex-wrap gap-2 text-xs">
@@ -322,7 +322,15 @@ export function CardFormPage({ mode }: Props) {
                 <select
                   className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                   value={audioPreferences.voice}
-                  onChange={(event) => setAudioPreferences((prev) => ({ ...prev, voice: event.target.value }))}
+                  onChange={(event) =>
+                    setAudioPreferences((prev) => {
+                      const next = { ...prev, voice: event.target.value };
+                      if (typeof window !== "undefined") {
+                        window.localStorage.setItem(STORAGE_KEYS.audioVoice, next.voice);
+                      }
+                      return next;
+                    })
+                  }
                 >
                   {cardOptionsQuery.data?.voices.map((voice) => (
                     <option key={voice} value={voice}>
@@ -353,7 +361,8 @@ export function CardFormPage({ mode }: Props) {
             {audioPreview && (
               <audio ref={audioRef} autoPlay controls src={`data:audio/mpeg;base64,${audioPreview}`} className="mt-4 w-full rounded-2xl border border-slate-200 dark:border-slate-700" />
             )}
-          </section>
+            </section>
+          )}
         </>
       ) : (
         <>
@@ -382,15 +391,12 @@ export function CardFormPage({ mode }: Props) {
                 ))}
             </div>
             <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
-              Process the phrase to unlock and auto-fill these fields, or{" "}
-              <button className="font-semibold text-brand underline" onClick={() => setDetailsUnlocked(true)}>
-                edit manually anyway
-              </button>
-              .
+              Process the phrase to unlock and auto-fill these fields.
             </p>
           </section>
 
-          <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+          {audioEnabled && (
+            <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
               <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Populates after processing</p>
@@ -430,7 +436,8 @@ export function CardFormPage({ mode }: Props) {
             <div className={`mt-4 h-20 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/40 ${isProcessing ? "animate-pulse" : ""}`}>
               Audio will appear here after processing.
             </div>
-          </section>
+            </section>
+          )}
         </>
       )}
 
