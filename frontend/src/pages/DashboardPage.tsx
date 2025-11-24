@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
@@ -17,6 +17,7 @@ interface DashboardDeck {
 
 interface DashboardEntry {
   id: string;
+  card_group_id: string;
   deck_name: string;
   target_language: string;
   direction: "forward" | "backward";
@@ -33,6 +34,7 @@ interface OverviewResponse {
 }
 
 export function DashboardPage() {
+  const navigate = useNavigate();
   const { data, isLoading, error } = useQuery({
     queryKey: ["overview"],
     queryFn: () => apiFetch<OverviewResponse>("/session/overview")
@@ -77,12 +79,23 @@ export function DashboardPage() {
         {data?.recentDecks?.length ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.recentDecks.map((deck) => (
-              <article key={deck.id} className="rounded-2xl border border-slate-100 p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/60">
+              <article
+                key={deck.id}
+                role="button"
+                tabIndex={0}
+                aria-label={`Open ${deck.name}`}
+                onClick={() => navigate(`/decks/${deck.id}`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate(`/decks/${deck.id}`);
+                  }
+                }}
+                className="group rounded-2xl border border-slate-100 p-4 shadow-sm transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
+              >
                 <div className="flex items-start justify-between gap-2">
                   <div>
-                    <Link to={`/decks/${deck.id}`} className="text-lg font-semibold text-slate-900 hover:text-brand dark:text-white">
-                      {deck.name}
-                    </Link>
+                    <p className="text-lg font-semibold text-slate-900 transition group-hover:text-brand dark:text-white">{deck.name}</p>
                     <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">
                       {deck.target_language || "—"}
                     </p>
@@ -123,7 +136,20 @@ export function DashboardPage() {
         {data?.recentEntries?.length ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {data.recentEntries.map((card) => (
-              <article key={card.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+              <article
+                key={card.id}
+                role="button"
+                tabIndex={0}
+                aria-label="Edit card"
+                onClick={() => navigate(`/cards/${card.card_group_id}/edit`)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    navigate(`/cards/${card.card_group_id}/edit`);
+                  }
+                }}
+                className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
+              >
                 <div className="flex items-center justify-between text-xs uppercase text-slate-500 dark:text-slate-400">
                   <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">{card.direction}</span>
                   <span>
