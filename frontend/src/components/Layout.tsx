@@ -26,6 +26,7 @@ export function Layout({ children }: LayoutProps) {
   const navItems = [
     { to: "/", label: "Dashboard" },
     { to: "/decks", label: "Decks" },
+    { to: "/help", label: "Help" },
     { to: "/profile", label: "Profile" },
     ...(user?.isAdmin ? [{ to: "/admin/users", label: "Admin" }] : [])
   ];

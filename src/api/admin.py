@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from ..services import decks as deck_service
 from ..services import users as user_service
 from ..settings import ALWAYS_ADMIN_EMAILS
 from .dependencies import get_current_user, parse_uuid, require_admin
@@ -19,6 +20,10 @@ class AdminEmailUpdatePayload(BaseModel):
 
 class AdminTogglePayload(BaseModel):
     make_admin: bool = Field(..., alias="makeAdmin")
+
+
+class PromptTemplatePayload(BaseModel):
+    prompt_templates: dict = Field(..., alias="promptTemplates")
 
 
 @router.get("/users")
@@ -121,3 +126,15 @@ def toggle_admin(user_id: str, payload: AdminTogglePayload, user=Depends(require
     user_service.set_admin_status(user_uuid, payload.make_admin)
     updated = user_service.get_user(user_uuid)
     return {"status": "ok", "user": updated}
+
+
+@router.get("/default-prompts")
+def get_default_prompts(user=Depends(require_admin)):
+    prompts = deck_service.default_prompt_templates()
+    return {"promptTemplates": prompts}
+
+
+@router.put("/default-prompts")
+def update_default_prompts(payload: PromptTemplatePayload, user=Depends(require_admin)):
+    prompts = deck_service.update_default_prompt_templates(payload.prompt_templates)
+    return {"promptTemplates": prompts}

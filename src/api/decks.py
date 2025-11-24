@@ -42,6 +42,20 @@ class DeckPayload(BaseModel):
     audio_instructions: Optional[str] = Field(None, alias="audioInstructions")
     audio_enabled: Optional[bool] = Field(True, alias="audioEnabled")
     generation_prompts: Optional[dict] = Field(None, alias="generationPrompts")
+    card_templates: Optional["CardTemplatesPayload"] = Field(None, alias="cardTemplates")
+
+
+class CardFaceTemplate(BaseModel):
+    front: Optional[str] = None
+    back: Optional[str] = None
+
+
+class CardTemplatesPayload(BaseModel):
+    forward: Optional[CardFaceTemplate] = None
+    backward: Optional[CardFaceTemplate] = None
+
+    class Config:
+        arbitrary_types_allowed = True
 
 
 def _ensure_native_language(user: dict):
@@ -49,23 +63,45 @@ def _ensure_native_language(user: dict):
         raise HTTPException(status_code=428, detail="Complete onboarding first.")
 
 
-def _build_prompt_templates(overrides: Optional[dict]) -> Optional[dict]:
-    if not overrides:
+DeckPayload.model_rebuild()
+
+
+def _card_templates_to_dict(payload: Optional[CardTemplatesPayload]) -> Optional[dict]:
+    if not payload:
+        return None
+    data = payload.model_dump(exclude_none=True)
+    return data or None
+
+
+def _build_prompt_templates(generation_overrides: Optional[dict], card_overrides: Optional[dict]) -> Optional[dict]:
+    if not generation_overrides and not card_overrides:
         return None
     templates = deck_service.default_prompt_templates()
-    base_generation = templates.get("generation") or {}
-    generation = {key: dict(value) for key, value in base_generation.items()}
-    for key, value in overrides.items():
-        if not isinstance(value, dict):
-            continue
-        existing = generation.get(key, {})
-        updated = dict(existing)
-        if "system" in value:
-            updated["system"] = value["system"]
-        if "user" in value:
-            updated["user"] = value["user"]
-        generation[key] = updated
-    templates["generation"] = generation
+    if generation_overrides:
+        base_generation = templates.get("generation") or {}
+        generation = {key: dict(value) for key, value in base_generation.items()}
+        for key, value in generation_overrides.items():
+            if not isinstance(value, dict):
+                continue
+            existing = generation.get(key, {})
+            updated = dict(existing)
+            if "system" in value:
+                updated["system"] = value["system"]
+            if "user" in value:
+                updated["user"] = value["user"]
+            generation[key] = updated
+        templates["generation"] = generation
+    if card_overrides:
+        for direction in ("forward", "backward"):
+            override = card_overrides.get(direction)
+            if not isinstance(override, dict):
+                continue
+            current = dict(templates.get(direction) or {})
+            if "front" in override and override["front"] is not None:
+                current["front"] = override["front"]
+            if "back" in override and override["back"] is not None:
+                current["back"] = override["back"]
+            templates[direction] = current
     return templates
 
 
@@ -74,7 +110,8 @@ def deck_options(user=Depends(get_current_user)):
     return {
         "fieldLibrary": deck_service.get_field_library(),
         "defaultFieldSchema": deck_service.default_field_schema(),
-        "audioInstructionsTemplate": deck_service.DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "audioInstructionsTemplate": deck_service.default_audio_instructions_template(),
+        "defaultCardTemplates": deck_service.default_card_templates(),
         "defaultGenerationPrompts": deck_service.default_generation_prompts(),
         "targetLanguageOptions": TARGET_LANGUAGE_OPTIONS,
     }
@@ -95,7 +132,9 @@ def create_deck(payload: DeckPayload, user=Depends(get_current_user)):
     field_schema = None
     if payload.field_schema:
         field_schema = [field.to_dict() for field in payload.field_schema]
-    prompt_templates = _build_prompt_templates(payload.generation_prompts)
+    generation_overrides = payload.generation_prompts
+    card_overrides = _card_templates_to_dict(payload.card_templates)
+    prompt_templates = _build_prompt_templates(generation_overrides, card_overrides)
     deck = deck_service.create_deck(
         owner_id=user["id"],
         name=payload.name.strip(),
@@ -153,6 +192,7 @@ def update_deck(deck_id: str, payload: DeckPayload, user=Depends(get_current_use
         generation_prompts=payload.generation_prompts,
         audio_instructions=payload.audio_instructions,
         audio_enabled=payload.audio_enabled,
+        card_templates=_card_templates_to_dict(payload.card_templates),
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Deck not found.")

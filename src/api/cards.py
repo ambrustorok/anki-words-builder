@@ -573,5 +573,5 @@ def card_audio(card_id: str, side: str = Query("front"), user=Depends(get_curren
 def card_options():
     return {
         "voices": AUDIO_VOICES,
-        "defaultAudioInstructions": deck_service.DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "defaultAudioInstructions": deck_service.default_audio_instructions_template(),
     }

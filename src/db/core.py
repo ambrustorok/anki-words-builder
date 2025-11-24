@@ -149,4 +149,15 @@ def init_db():
                 "CREATE INDEX IF NOT EXISTS idx_cards_group ON cards (card_group_id)"
             )
 
+            # App-level settings
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS app_settings (
+                    key TEXT PRIMARY KEY,
+                    value JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+
             conn.commit()

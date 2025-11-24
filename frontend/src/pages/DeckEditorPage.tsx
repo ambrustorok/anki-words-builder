@@ -1,11 +1,11 @@
 import { FormEvent, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { FieldSchemaEditor, FieldSchemaEntry, FieldOption } from "../components/FieldSchemaEditor";
-import type { DeckDetailResponse } from "../types";
+import type { DeckDetailResponse, PromptTemplates } from "../types";
 
 const PROMPT_KEYS = ["translation", "dictionary", "sentence"] as const;
 type PromptKey = (typeof PROMPT_KEYS)[number];
@@ -13,14 +13,6 @@ type PromptValue = { system: string; user: string };
 type PromptState = Record<PromptKey, PromptValue>;
 type PromptConfig = { system?: string; user?: string };
 type PromptLibrary = Record<string, PromptConfig>;
-
-interface DeckOptionsResponse {
-  fieldLibrary: FieldOption[];
-  defaultFieldSchema: FieldSchemaEntry[];
-  targetLanguageOptions: string[];
-  audioInstructionsTemplate: string;
-  defaultGenerationPrompts: PromptLibrary;
-}
 
 const buildDefaultPrompts = (defaults?: PromptLibrary): PromptState => {
   return PROMPT_KEYS.reduce((acc, key) => {
@@ -51,6 +43,59 @@ const serializeFieldSchema = (schema: FieldSchemaEntry[]): FieldSchemaPayloadEnt
     autoGenerate: auto_generate
   }));
 
+const CARD_DIRECTIONS = ["forward", "backward"] as const;
+type CardDirectionKey = (typeof CARD_DIRECTIONS)[number];
+
+interface CardTemplateFace {
+  front: string;
+  back: string;
+}
+
+type CardTemplateState = Record<CardDirectionKey, CardTemplateFace>;
+type CardTemplateInput = Partial<Record<CardDirectionKey, Partial<CardTemplateFace>>>;
+
+const createEmptyCardTemplates = (): CardTemplateState => ({
+  forward: { front: "", back: "" },
+  backward: { front: "", back: "" }
+});
+
+const buildCardTemplateState = (
+  source?: CardTemplateInput | null,
+  base?: CardTemplateState | null
+): CardTemplateState => {
+  const seed: CardTemplateState = base
+    ? {
+        forward: { ...base.forward },
+        backward: { ...base.backward }
+      }
+    : createEmptyCardTemplates();
+  CARD_DIRECTIONS.forEach((direction) => {
+    const override = source?.[direction];
+    if (!override) return;
+    if (override.front !== undefined) {
+      seed[direction].front = override.front ?? "";
+    }
+    if (override.back !== undefined) {
+      seed[direction].back = override.back ?? "";
+    }
+  });
+  return seed;
+};
+
+const cloneCardTemplates = (state: CardTemplateState): CardTemplateState => ({
+  forward: { ...state.forward },
+  backward: { ...state.backward }
+});
+
+interface DeckOptionsResponse {
+  fieldLibrary: FieldOption[];
+  defaultFieldSchema: FieldSchemaEntry[];
+  targetLanguageOptions: string[];
+  audioInstructionsTemplate: string;
+  defaultCardTemplates: CardTemplateInput;
+  defaultGenerationPrompts: PromptLibrary;
+}
+
 interface Props {
   mode: "create" | "edit";
 }
@@ -66,10 +111,12 @@ export function DeckEditorPage({ mode }: Props) {
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [prompts, setPrompts] = useState<PromptState>(() => buildDefaultPrompts());
   const [fullGenerationPrompts, setFullGenerationPrompts] = useState<PromptLibrary | null>(null);
+  const [cardTemplates, setCardTemplates] = useState<CardTemplateState>(() => createEmptyCardTemplates());
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
   const loadedDeckIdRef = useRef<string | null>(null);
   const audioTemplateRef = useRef("");
+  const cardTemplateDefaultsRef = useRef<CardTemplateState>(createEmptyCardTemplates());
   const isEdit = mode === "edit";
 
   const { data: options, isLoading: optionsLoading } = useQuery({
@@ -88,6 +135,12 @@ export function DeckEditorPage({ mode }: Props) {
   }, [options]);
 
   useEffect(() => {
+    if (options?.defaultCardTemplates) {
+      cardTemplateDefaultsRef.current = buildCardTemplateState(options.defaultCardTemplates, null);
+    }
+  }, [options]);
+
+  useEffect(() => {
     if (options && mode === "create") {
       const defaults = buildDefaultPrompts(options.defaultGenerationPrompts);
       setFieldSchema(options.defaultFieldSchema);
@@ -95,6 +148,7 @@ export function DeckEditorPage({ mode }: Props) {
       setTargetLanguage(options.targetLanguageOptions[0] ?? "");
       setPrompts(defaults);
       setFullGenerationPrompts({ ...(options.defaultGenerationPrompts ?? {}) });
+      setCardTemplates(cloneCardTemplates(cardTemplateDefaultsRef.current));
       loadedDeckIdRef.current = null;
     }
   }, [options, mode]);
@@ -117,12 +171,31 @@ export function DeckEditorPage({ mode }: Props) {
       setFullGenerationPrompts({ ...generationPrompts });
       const merged = buildDefaultPrompts(generationPrompts);
       setPrompts(merged);
+      const promptTemplates = (deckData.deck.prompt_templates ?? {}) as PromptTemplates;
+      const mergedCardTemplates = buildCardTemplateState(
+        {
+          forward: promptTemplates.forward,
+          backward: promptTemplates.backward
+        },
+        cardTemplateDefaultsRef.current
+      );
+      setCardTemplates(mergedCardTemplates);
     }
   }, [deckData, mode]);
 
   if (optionsLoading || (mode === "edit" && deckLoading)) {
     return <LoadingScreen label="Loading deck editor" />;
   }
+
+  const handleCardTemplateChange = (direction: CardDirectionKey, face: keyof CardTemplateFace, value: string) => {
+    setCardTemplates((prev) => ({
+      ...prev,
+      [direction]: {
+        ...prev[direction],
+        [face]: value
+      }
+    }));
+  };
 
   const handlePromptChange = (key: PromptKey, field: keyof PromptValue, value: string) => {
     setPrompts((prev) => ({
@@ -152,7 +225,8 @@ export function DeckEditorPage({ mode }: Props) {
         fieldSchema: serializeFieldSchema(fieldSchema),
         audioInstructions,
         audioEnabled,
-        generationPrompts: generationPromptsPayload
+        generationPrompts: generationPromptsPayload,
+        cardTemplates: cardTemplates
       };
       if (mode === "create") {
         const response = await apiFetch<{ deck: { id: string } }>("/decks", {
@@ -252,6 +326,49 @@ export function DeckEditorPage({ mode }: Props) {
         {options && (
           <FieldSchemaEditor options={options.fieldLibrary} schema={fieldSchema} onChange={setFieldSchema} />
         )}
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Card templates</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Control how the front/back of each card direction should render. Use placeholders like{" "}
+              <code className="rounded bg-slate-100 px-1 text-xs text-slate-700 dark:bg-slate-800 dark:text-slate-200">
+                &#123;&#123;foreign_phrase&#125;&#125;
+              </code>{" "}
+              anywhere in the markup.
+            </p>
+          </div>
+          <Link to="/help" className="text-sm font-semibold text-brand">
+            View variable guide →
+          </Link>
+        </div>
+        <div className="mt-4 grid gap-4 md:grid-cols-2">
+          {CARD_DIRECTIONS.map((direction) => (
+            <div key={direction} className="rounded-2xl border border-slate-100 p-4 dark:border-slate-800 dark:bg-slate-900/60">
+              <p className="text-sm font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-300">
+                {direction === "forward" ? "Forward card" : "Backward card"}
+              </p>
+              <label className="mt-3 block text-xs font-semibold uppercase text-slate-400 dark:text-slate-500">
+                Front template
+              </label>
+              <textarea
+                className="mt-1 h-28 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                value={cardTemplates[direction].front}
+                onChange={(event) => handleCardTemplateChange(direction, "front", event.target.value)}
+              />
+              <label className="mt-3 block text-xs font-semibold uppercase text-slate-400 dark:text-slate-500">
+                Back template
+              </label>
+              <textarea
+                className="mt-1 h-28 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                value={cardTemplates[direction].back}
+                onChange={(event) => handleCardTemplateChange(direction, "back", event.target.value)}
+              />
+            </div>
+          ))}
+        </div>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
