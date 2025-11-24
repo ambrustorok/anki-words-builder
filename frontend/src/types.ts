@@ -6,12 +6,27 @@ export interface DeckField {
   auto_generate?: boolean;
 }
 
+export interface PromptFaceTemplate {
+  front?: string;
+  back?: string;
+}
+
+export interface PromptTemplates {
+  forward?: PromptFaceTemplate;
+  backward?: PromptFaceTemplate;
+  generation?: Record<string, unknown>;
+  audio?: {
+    instructions?: string;
+    enabled?: boolean;
+  };
+}
+
 export interface Deck {
   id: string;
   name: string;
   target_language: string;
   field_schema: DeckField[];
-  prompt_templates?: Record<string, unknown>;
+  prompt_templates?: PromptTemplates;
 }
 
 export interface CardDirection {

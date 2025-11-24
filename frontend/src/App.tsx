@@ -14,6 +14,7 @@ import { CardCreatePage } from "./pages/CardCreatePage";
 import { CardEditPage } from "./pages/CardEditPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminUserDetailPage } from "./pages/AdminUserDetailPage";
+import { HelpPage } from "./pages/HelpPage";
 
 function AppRoutes() {
   const session = useSession();
@@ -37,6 +38,7 @@ function AppRoutes() {
         <Route path="/decks/new" element={<DeckEditorPage mode="create" />} />
         <Route path="/decks/:deckId" element={<DeckDetailPage />} />
         <Route path="/decks/:deckId/edit" element={<DeckEditorPage mode="edit" />} />
+        <Route path="/help" element={<HelpPage />} />
         <Route path="/cards/new/:deckId" element={<CardCreatePage />} />
         <Route path="/cards/:groupId/edit" element={<CardEditPage />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
