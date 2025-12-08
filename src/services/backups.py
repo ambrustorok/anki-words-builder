@@ -133,6 +133,7 @@ def import_backup(owner_id: UUID, archive_bytes: bytes) -> dict:
                     back_audio = None
             cards_payload.append(
                 {
+                    "id": card.get("id"),
                     "card_group_id": card.get("card_group_id"),
                     "direction": card.get("direction"),
                     "payload": card.get("payload") or {},

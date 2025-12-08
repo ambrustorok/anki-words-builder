@@ -500,7 +500,13 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                 original_group = card.get("card_group_id")
                 group_key = str(original_group) if original_group else str(uuid.uuid4())
                 mapped_group = group_map.setdefault(group_key, uuid.uuid4())
-                new_card_id = uuid.uuid4()
+                
+                # Use existing ID if provided, otherwise generate a new one
+                if card.get("id"):
+                    new_card_id = uuid.UUID(str(card["id"]))
+                else:
+                    new_card_id = uuid.uuid4()
+                
                 payload = card.get("payload") or {}
                 created_at = card.get("created_at")
                 updated_at = card.get("updated_at") or created_at
