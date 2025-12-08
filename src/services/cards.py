@@ -82,6 +82,12 @@ def _render_card(
     }
 
 
+NAMESPACE_ANKI_CARDS = uuid.UUID("6b9a8963-8e7c-4054-94c6-2c9769341b52")
+
+def get_deterministic_card_id(group_id: uuid.UUID, direction: str) -> uuid.UUID:
+    """Generate a deterministic UUID based on group_id and direction."""
+    return uuid.uuid5(NAMESPACE_ANKI_CARDS, f"{str(group_id)}-{direction}")
+
 def create_cards(
     owner_id: uuid.UUID,
     deck: dict,
@@ -100,7 +106,7 @@ def create_cards(
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             for direction in valid_directions:
-                card_id = uuid.uuid4()
+                card_id = get_deterministic_card_id(group_id, direction)
                 front_audio = None
                 back_audio = audio_bytes if audio_bytes else None
                 cur.execute(
@@ -614,7 +620,7 @@ def update_card_group(
                     params.append(row["id"])
                     cur.execute(sql, params)
                 else:
-                    card_id = uuid.uuid4()
+                    card_id = get_deterministic_card_id(group_id, direction)
                     back_audio = Binary(audio_bytes) if audio_bytes else None
                     audio_name = audio_filename if audio_bytes else None
                     cur.execute(
@@ -684,14 +690,21 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                 if direction not in ("forward", "backward"):
                     continue
                 original_group = card.get("card_group_id")
-                group_key = str(original_group) if original_group else str(uuid.uuid4())
-                mapped_group = group_map.setdefault(group_key, uuid.uuid4())
-                
-                # Use existing ID if provided, otherwise generate a new one
-                if card.get("id"):
-                    new_card_id = uuid.UUID(str(card["id"]))
+                if original_group:
+                    # Try to maintain the same Group ID so that deterministic Card IDs remain stable across restores.
+                    # This allows Anki to recognize restored cards as the same identities.
+                    # Note: If these IDs already exist in the DB (e.g. deck wasn't deleted), this will raise a PK violation, which is expected.
+                    target_group = uuid.UUID(str(original_group))
+                    group_key = str(original_group)
                 else:
-                    new_card_id = uuid.uuid4()
+                    target_group = uuid.uuid4()
+                    group_key = str(target_group)
+
+                mapped_group = group_map.setdefault(group_key, target_group)
+                
+                # Always generate deterministic ID based on the new group ID and direction
+                # This ensures the invariant CardID = fn(GroupID, Direction) holds for imported cards
+                new_card_id = get_deterministic_card_id(mapped_group, direction)
                 
                 payload = card.get("payload") or {}
                 created_at = card.get("created_at")
