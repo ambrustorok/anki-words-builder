@@ -154,24 +154,58 @@ def deck_detail(deck_id: str, user=Depends(get_current_user)):
     deck = deck_service.get_deck(deck_uuid, user["id"])
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
-    cards = card_service.list_cards_for_deck(user["id"], deck, user.get("native_language"))
+    # Limit cards for summary view
+    paginated = card_service.list_cards_for_deck_paginated(
+        user["id"], deck, user.get("native_language"), page=1, limit=5
+    )
     generation_prompts = deck_service.get_generation_prompts(deck)
-    entry_count = len(cards)
-    card_count = sum(len(group.get("directions", [])) for group in cards)
+    
+    # We still want total metrics
+    entry_count = paginated["total"]
+    
+    # Get total count of individual card faces
+    card_count = card_service.count_cards_in_deck(user["id"], deck["id"])
+
     last_modified = deck.get("updated_at")
-    for group in cards:
-        group_updated = group.get("updated_at")
-        if group_updated:
-            if not last_modified or group_updated > last_modified:
-                last_modified = group_updated
+    # We can use the latest updated_at from the top 5 cards as a proxy if deeper validtion is needed, 
+    # but the deck's updated_at should be sufficient if we maintain it properly.
+    if paginated["cards"]:
+        latest_card_update = max(c["updated_at"] for c in paginated["cards"])
+        if not last_modified or (latest_card_update and latest_card_update > last_modified):
+            last_modified = latest_card_update
+
     return {
         "deck": deck,
-        "cards": cards,
+        "cards": paginated["cards"],
         "generationPrompts": generation_prompts,
         "entryCount": entry_count,
-        "cardCount": card_count,
+        "cardCount": card_count, 
         "lastModified": last_modified,
     }
+
+
+@router.get("/{deck_id}/cards")
+def list_deck_cards(
+    deck_id: str, 
+    page: int = 1, 
+    limit: int = 50, 
+    q: Optional[str] = None,
+    user=Depends(get_current_user)
+):
+    deck_uuid = parse_uuid(deck_id, entity="Deck")
+    deck = deck_service.get_deck(deck_uuid, user["id"])
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found.")
+        
+    result = card_service.list_cards_for_deck_paginated(
+        user["id"], 
+        deck, 
+        user.get("native_language"), 
+        page=page, 
+        limit=limit, 
+        search_query=q
+    )
+    return result
 
 
 @router.put("/{deck_id}")

@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 
 import { apiFetch, API_BASE_URL } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
+import { CardGroupItem } from "../components/CardGroupItem";
 import type { DeckDetailResponse } from "../types";
 
 export function DeckDetailPage() {
@@ -20,6 +21,11 @@ export function DeckDetailPage() {
     await apiFetch(`/cards/groups/${groupId}`, { method: "DELETE" });
     refetch();
   };
+
+  const navigateToCards = () => {
+    navigate(`/decks/${deckId}/cards`);
+  };
+
   if (isLoading || !deckId) {
     return <LoadingScreen label="Loading deck" />;
   }
@@ -60,8 +66,11 @@ export function DeckDetailPage() {
           </div>
         </div>
         <div className="mt-4 grid gap-4 text-sm text-slate-600 md:grid-cols-3">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <p className="text-xs uppercase text-slate-400 dark:text-slate-500">Card entries</p>
+          <div
+            className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:bg-slate-800 cursor-pointer"
+            onClick={navigateToCards}
+          >
+            <p className="text-xs uppercase text-slate-400 dark:text-slate-500 group-hover:text-brand">Card entries &rarr;</p>
             <p className="text-2xl font-semibold text-slate-900 dark:text-white">{data?.entryCount ?? 0}</p>
           </div>
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
@@ -78,65 +87,15 @@ export function DeckDetailPage() {
       </section>
 
       <section className="space-y-4">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Recent Cards</h2>
+          <Link to={`/decks/${deckId}/cards`} className="text-sm font-semibold text-brand hover:underline">
+            Manage Cards &rarr;
+          </Link>
+        </div>
         {data?.cards?.length ? (
           data.cards.map((group) => (
-            <article
-              key={group.group_id}
-              role="button"
-              tabIndex={0}
-              aria-label="Edit card group"
-              onClick={() => navigate(`/cards/${group.group_id}/edit`)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  navigate(`/cards/${group.group_id}/edit`);
-                }
-              }}
-              className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/70"
-            >
-              <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <span>Created {group.created_at ? new Date(group.created_at).toLocaleString() : "—"}</span>
-                <span>Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>
-                <div className="ml-auto flex gap-3 text-xs">
-                  <Link
-                    className="text-brand"
-                    to={`/cards/${group.group_id}/edit`}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    Edit
-                  </Link>
-                  <button
-                    className="text-red-500"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      deleteCard(group.group_id);
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
-              </div>
-              <div className="mt-4 grid gap-4 md:grid-cols-2">
-                {group.directions.map((direction) => (
-                  <div key={direction.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-                    <p className="text-xs uppercase text-slate-500 dark:text-slate-400">{direction.direction}</p>
-                    <div className="mt-2 space-y-2 text-sm">
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front</p>
-                        <div
-                          className="rounded-xl bg-white p-3 dark:bg-slate-800"
-                          dangerouslySetInnerHTML={{ __html: direction.front }}
-                        />
-                      </div>
-                      <div>
-                        <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Back</p>
-                        <div className="rounded-xl bg-white p-3 dark:bg-slate-800" dangerouslySetInnerHTML={{ __html: direction.back }} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </article>
+            <CardGroupItem key={group.group_id} group={group} onDelete={deleteCard} />
           ))
         ) : (
           <p className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">

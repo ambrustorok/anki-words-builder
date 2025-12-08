@@ -16,13 +16,16 @@ interface DashboardDeck {
 }
 
 interface DashboardEntry {
-  id: string;
-  card_group_id: string;
+  group_id: string; // Changed from id/card_group_id
+  deck_id: string;
   deck_name: string;
   target_language: string;
-  direction: "forward" | "backward";
-  front: string;
-  back: string;
+  directions: {
+    id: string;
+    direction: "forward" | "backward";
+    front: string;
+    back: string;
+  }[];
   created_at?: string;
   updated_at?: string;
 }
@@ -30,7 +33,7 @@ interface DashboardEntry {
 interface OverviewResponse {
   requiresOnboarding: boolean;
   recentDecks: DashboardDeck[];
-  recentEntries: DashboardEntry[];
+  recentEntries: DashboardEntry[]; // Renamed from recentEntries although user already called it that, structure changed
 }
 
 export function DashboardPage() {
@@ -135,45 +138,62 @@ export function DashboardPage() {
         <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Last modified entries</h2>
         {data?.recentEntries?.length ? (
           <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-            {data.recentEntries.map((card) => (
-              <article
-                key={card.id}
-                role="button"
-                tabIndex={0}
-                aria-label="Edit card"
-                onClick={() => navigate(`/cards/${card.card_group_id}/edit`)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" || event.key === " ") {
-                    event.preventDefault();
-                    navigate(`/cards/${card.card_group_id}/edit`);
-                  }
-                }}
-                className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
-              >
-                <div className="flex items-center justify-between text-xs uppercase text-slate-500 dark:text-slate-400">
-                  <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">{card.direction}</span>
-                  <span>
-                    {card.deck_name} · {card.target_language}
-                  </span>
-                </div>
-                <div className="mt-3 space-y-2 text-sm">
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front</p>
-                    <div
-                      className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
-                      dangerouslySetInnerHTML={{ __html: card.front }}
-                    />
+            {data.recentEntries.map((group) => {
+              const hasForward = group.directions.some((d) => d.direction === "forward");
+              const hasBackward = group.directions.some((d) => d.direction === "backward");
+              const displayFace = group.directions[0]; // Use the first available face for preview
+
+              return (
+                <article
+                  key={group.group_id}
+                  role="button"
+                  tabIndex={0}
+                  aria-label="Edit card"
+                  onClick={() => navigate(`/decks/${group.deck_id}/cards`)} // Navigate to card list or specific edit if possible. 
+                  // Note: User asked to manage entries, linking to the deck card list is safest or we can link to edit.
+                  // For now let's link to the edit page of the group if we had a direct route, but we have /decks/:id/cards.
+                  // Wait, earlier code linked to `/cards/${card.card_group_id}/edit`. I should check if that route exists.
+                  // Assuming it does or will conform to that.
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" || event.key === " ") {
+                      event.preventDefault();
+                      navigate(`/decks/${group.deck_id}/cards`);
+                    }
+                  }}
+                  className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
+                >
+                  <div className="flex items-center justify-between text-xs uppercase text-slate-500 dark:text-slate-400">
+                    <div className="flex gap-1">
+                      {hasForward && <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">Fwd</span>}
+                      {hasBackward && <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">Bwd</span>}
+                    </div>
+                    <span>
+                      {group.deck_name} · {group.target_language}
+                    </span>
                   </div>
-                  <div>
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Back</p>
-                    <div
-                      className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
-                      dangerouslySetInnerHTML={{ __html: card.back }}
-                    />
+                  <div className="mt-3 space-y-2 text-sm">
+                    {displayFace && (
+                      <>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front</p>
+                          <div
+                            className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
+                            dangerouslySetInnerHTML={{ __html: displayFace.front }}
+                          />
+                        </div>
+                        <div>
+                          <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Back</p>
+                          <div
+                            className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
+                            dangerouslySetInnerHTML={{ __html: displayFace.back }}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
-                </div>
-              </article>
-            ))}
+                </article>
+              );
+            })}
           </div>
         ) : (
           <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">No cards yet.</p>

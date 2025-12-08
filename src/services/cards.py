@@ -133,8 +133,29 @@ def list_recent_cards(
 ) -> List[dict]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Fetch recent distinct group IDs
             cur.execute(
                 """
+                SELECT card_group_id, MAX(updated_at) as max_updated
+                FROM cards
+                WHERE owner_id = %s
+                GROUP BY card_group_id
+                ORDER BY max_updated DESC
+                LIMIT %s
+                """,
+                (_uuid(owner_id), limit),
+            )
+            group_rows = cur.fetchall()
+            
+            if not group_rows:
+                return []
+            
+            group_ids = [row["card_group_id"] for row in group_rows]
+            placeholders = ",".join(["%s"] * len(group_ids))
+            
+            # 2. Fetch full details for these groups
+            cur.execute(
+                f"""
                 SELECT c.card_group_id,
                        c.id,
                        c.deck_id,
@@ -142,31 +163,76 @@ def list_recent_cards(
                        c.payload,
                        c.created_at,
                        c.updated_at,
+                       c.front_audio IS NOT NULL AS has_front_audio,
+                       c.back_audio IS NOT NULL AS has_back_audio,
                        d.name AS deck_name,
                        d.target_language,
                        d.prompt_templates,
                        d.field_schema
                 FROM cards c
                 JOIN decks d ON d.id = c.deck_id
-                WHERE c.owner_id = %s
-                ORDER BY c.updated_at DESC
-                LIMIT %s
+                WHERE c.owner_id = %s AND c.card_group_id IN ({placeholders})
+                ORDER BY c.card_group_id, c.direction
                 """,
-                (_uuid(owner_id), limit),
+                (_uuid(owner_id), *[_uuid(gid) for gid in group_ids]),
             )
             rows = cur.fetchall()
+
+    grouped: Dict[str, dict] = {}
     for row in rows:
-        deck = {
-            "id": row["deck_id"],
-            "name": row["deck_name"],
+        group_id = row["card_group_id"]
+        group = grouped.setdefault(
+            group_id,
+            {
+                "group_id": group_id,
+                "deck_id": row["deck_id"],
+                "deck_name": row["deck_name"],
+                "target_language": row["target_language"],
+                "payload": row["payload"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "directions": [],
+                "audio_card": None,
+                "audio_side": None,
+                "prompt_templates": row["prompt_templates"],
+                "field_schema": deck_service.normalize_field_schema(row.get("field_schema")),
+            },
+        )
+        group["created_at"] = min(group["created_at"], row["created_at"])
+        group["updated_at"] = max(group["updated_at"], row["updated_at"])
+        
+        deck_info = {
             "target_language": row["target_language"],
             "prompt_templates": row["prompt_templates"],
-            "field_schema": deck_service.normalize_field_schema(row.get("field_schema")),
+            "field_schema": row["field_schema"],
         }
-        faces = _render_card(deck, row["payload"], row["direction"], native_language)
-        row["front"] = faces["front"]
-        row["back"] = faces["back"]
-    return rows
+        faces = _render_card(deck_info, row["payload"], row["direction"], native_language)
+        
+        group["directions"].append(
+            {
+                "id": row["id"],
+                "direction": row["direction"],
+                "front": faces["front"],
+                "back": faces["back"],
+                "has_front_audio": row["has_front_audio"],
+                "has_back_audio": row["has_back_audio"],
+            }
+        )
+        if row["has_front_audio"] and not group["audio_card"]:
+            group["audio_card"] = row["id"]
+            group["audio_side"] = "front"
+        elif row["has_back_audio"] and not group["audio_card"]:
+            group["audio_card"] = row["id"]
+            group["audio_side"] = "back"
+            
+    # Sort by the order we got from the first query (timestamp)
+    ordered_groups = []
+    group_map = {g["group_id"]: g for g in grouped.values()}
+    for grid in group_ids:
+        if grid in group_map:
+            ordered_groups.append(group_map[grid])
+            
+    return ordered_groups
 
 
 def list_cards_for_deck(
@@ -232,6 +298,126 @@ def list_cards_for_deck(
         reverse=True,
     )
     return ordered
+
+
+def list_cards_for_deck_paginated(
+    owner_id: uuid.UUID,
+    deck: dict,
+    native_language: Optional[str],
+    page: int = 1,
+    limit: int = 50,
+    search_query: Optional[str] = None,
+) -> dict:
+    offset = (page - 1) * limit
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            # 1. Get paginated group IDs
+            query_params = [_uuid(owner_id), _uuid(deck["id"])]
+            search_clause = ""
+            if search_query:
+                search_clause = "AND payload::text ILIKE %s"
+                query_params.append(f"%{search_query}%")
+
+            count_sql = f"""
+                SELECT COUNT(DISTINCT card_group_id) as total
+                FROM cards
+                WHERE owner_id = %s AND deck_id = %s {search_clause}
+            """
+            cur.execute(count_sql, tuple(query_params))
+            total_groups = cur.fetchone()["total"]
+
+            groups_sql = f"""
+                SELECT card_group_id, MAX(updated_at) as max_updated
+                FROM cards
+                WHERE owner_id = %s AND deck_id = %s {search_clause}
+                GROUP BY card_group_id
+                ORDER BY max_updated DESC
+                LIMIT %s OFFSET %s
+            """
+            cur.execute(groups_sql, tuple(query_params + [limit, offset]))
+            group_rows = cur.fetchall()
+            
+            if not group_rows:
+                return {
+                    "cards": [],
+                    "total": 0,
+                    "page": page,
+                    "limit": limit,
+                    "pages": 0
+                }
+
+            group_ids = [row["card_group_id"] for row in group_rows]
+            
+            # 2. Fetch cards for these groups
+            placeholders = ",".join(["%s"] * len(group_ids))
+            cards_sql = f"""
+                SELECT c.card_group_id,
+                       c.id,
+                       c.direction,
+                       c.payload,
+                       c.created_at,
+                       c.updated_at,
+                       c.front_audio IS NOT NULL AS has_front_audio,
+                       c.back_audio IS NOT NULL AS has_back_audio
+                FROM cards c
+                WHERE c.owner_id = %s 
+                  AND c.card_group_id IN ({placeholders})
+                ORDER BY c.card_group_id, c.direction
+            """
+            cur.execute(cards_sql, (_uuid(owner_id), *[_uuid(gid) for gid in group_ids]))
+            rows = cur.fetchall()
+
+    # Reuse the grouping logic
+    grouped: Dict[str, dict] = {}
+    for row in rows:
+        group_id = row["card_group_id"]
+        group = grouped.setdefault(
+            group_id,
+            {
+                "group_id": group_id,
+                "payload": row["payload"],
+                "created_at": row["created_at"],
+                "updated_at": row["updated_at"],
+                "directions": [],
+                "audio_card": None,
+                "audio_side": None,
+            },
+        )
+        group["created_at"] = min(group["created_at"], row["created_at"])
+        group["updated_at"] = max(group["updated_at"], row["updated_at"])
+        faces = _render_card(deck, row["payload"], row["direction"], native_language)
+        group["directions"].append(
+            {
+                "id": row["id"],
+                "direction": row["direction"],
+                "front": faces["front"],
+                "back": faces["back"],
+                "has_front_audio": row["has_front_audio"],
+                "has_back_audio": row["has_back_audio"],
+            }
+        )
+        if row["has_front_audio"] and not group["audio_card"]:
+            group["audio_card"] = row["id"]
+            group["audio_side"] = "front"
+        elif row["has_back_audio"] and not group["audio_card"]:
+            group["audio_card"] = row["id"]
+            group["audio_side"] = "back"
+            
+    # Sort by the order we got from the pagination query
+    ordered_groups = []
+    group_map = {g["group_id"]: g for g in grouped.values()}
+    for grid in group_ids:
+        if grid in group_map:
+            ordered_groups.append(group_map[grid])
+
+    import math
+    return {
+        "cards": ordered_groups,
+        "total": total_groups,
+        "page": page,
+        "limit": limit,
+        "pages": math.ceil(total_groups / limit) if limit > 0 else 1
+    }
 
 
 def get_cards_for_export(
@@ -545,4 +731,13 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                 )
                 inserted += 1
         conn.commit()
-    return inserted
+
+def count_cards_in_deck(owner_id: uuid.UUID, deck_id: uuid.UUID) -> int:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT COUNT(*) FROM cards WHERE owner_id = %s AND deck_id = %s",
+                (_uuid(owner_id), _uuid(deck_id)),
+            )
+            count = cur.fetchone()[0]
+    return count
