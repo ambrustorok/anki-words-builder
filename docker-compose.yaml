@@ -3,6 +3,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    restart: unless-stopped
     environment:
       PYTHONUNBUFFERED: 1
       PYTHONDONTWRITEBYTECODE: 1
@@ -22,6 +23,7 @@ services:
 
   frontend:
     image: node:20-alpine
+    restart: unless-stopped
     working_dir: /app
     environment:
       VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
