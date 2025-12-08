@@ -138,3 +138,4 @@ def get_default_prompts(user=Depends(require_admin)):
 def update_default_prompts(payload: PromptTemplatePayload, user=Depends(require_admin)):
     prompts = deck_service.update_default_prompt_templates(payload.prompt_templates)
     return {"promptTemplates": prompts}
+

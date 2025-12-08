@@ -101,21 +101,42 @@ def create_cards(
     if not valid_directions:
         raise ValueError("Select at least one direction to generate cards.")
 
-    group_id = uuid.uuid4()
+    # Deterministic ID based on deck_id and foreign_phrase
+    foreign_phrase = payload.get("foreign_phrase")
+    if not foreign_phrase:
+         # Should have been caught by validation, but fallback
+         group_id = uuid.uuid4()
+    else:
+         # deck_id is in deck dict, assume it's UUID object or string?
+         # deck["id"] usually comes from DB, check type.
+         # In other functions _uuid() is used, implying it's UUID.
+         # But safely handle it.
+         d_id = deck["id"]
+         if isinstance(d_id, str):
+             d_id = uuid.UUID(d_id)
+         group_id = uuid.uuid5(d_id, foreign_phrase.strip())
+
     audio_filename = f"{uuid.uuid4().hex}.mp3" if audio_bytes else None
+    
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            for direction in valid_directions:
-                card_id = get_deterministic_card_id(group_id, direction)
-                front_audio = None
-                back_audio = audio_bytes if audio_bytes else None
+                # Stable Anki ID: Generate random for new card
+                card_anki_id = uuid.uuid4()
+                
                 cur.execute(
                     """
                     INSERT INTO cards (
                         id, card_group_id, deck_id, owner_id, direction,
-                        payload, front_audio, back_audio, audio_filename
+                        payload, front_audio, back_audio, audio_filename, updated_at, anki_id
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW(), %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                         payload = EXCLUDED.payload,
+                         front_audio = COALESCE(EXCLUDED.front_audio, cards.front_audio),
+                         back_audio = COALESCE(EXCLUDED.back_audio, cards.back_audio),
+                         audio_filename = COALESCE(EXCLUDED.audio_filename, cards.audio_filename),
+                         updated_at = NOW(),
+                         anki_id = COALESCE(cards.anki_id, EXCLUDED.anki_id)
                     """,
                     (
                         _uuid(card_id),
@@ -127,6 +148,7 @@ def create_cards(
                         Binary(front_audio) if front_audio else None,
                         Binary(back_audio) if back_audio else None,
                         audio_filename,
+                        _uuid(card_anki_id),
                     ),
                 )
         conn.commit()
@@ -164,6 +186,7 @@ def list_recent_cards(
                 f"""
                 SELECT c.card_group_id,
                        c.id,
+                       c.anki_id,
                        c.deck_id,
                        c.direction,
                        c.payload,
@@ -217,6 +240,7 @@ def list_recent_cards(
         group["directions"].append(
             {
                 "id": row["id"],
+                "anki_id": row["anki_id"],
                 "direction": row["direction"],
                 "front": faces["front"],
                 "back": faces["back"],
@@ -250,6 +274,7 @@ def list_cards_for_deck(
                 """
                 SELECT c.card_group_id,
                        c.id,
+                       c.anki_id,
                        c.direction,
                        c.payload,
                        c.created_at,
@@ -285,6 +310,7 @@ def list_cards_for_deck(
         group["directions"].append(
             {
                 "id": row["id"],
+                "anki_id": row["anki_id"],
                 "direction": row["direction"],
                 "front": faces["front"],
                 "back": faces["back"],
@@ -359,6 +385,7 @@ def list_cards_for_deck_paginated(
             cards_sql = f"""
                 SELECT c.card_group_id,
                        c.id,
+                       c.anki_id,
                        c.direction,
                        c.payload,
                        c.created_at,
@@ -395,6 +422,7 @@ def list_cards_for_deck_paginated(
         group["directions"].append(
             {
                 "id": row["id"],
+                "anki_id": row["anki_id"],
                 "direction": row["direction"],
                 "front": faces["front"],
                 "back": faces["back"],
@@ -434,6 +462,7 @@ def get_cards_for_export(
             cur.execute(
                 """
                 SELECT c.id,
+                       c.anki_id,
                        c.card_group_id,
                        c.direction,
                        c.payload,
@@ -473,6 +502,7 @@ def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
             cur.execute(
                 """
                 SELECT c.id,
+                       c.anki_id,
                        c.card_group_id,
                        c.direction,
                        c.payload,
@@ -493,6 +523,7 @@ def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
         cards.append(
             {
                 "id": row["id"],
+                "anki_id": row["anki_id"],
                 "card_group_id": row["card_group_id"],
                 "direction": row["direction"],
                 "payload": row["payload"],
@@ -513,6 +544,7 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
                 """
                 SELECT c.card_group_id,
                        c.id,
+                       c.anki_id,
                        c.direction,
                        c.payload,
                        c.created_at,
@@ -621,15 +653,16 @@ def update_card_group(
                     cur.execute(sql, params)
                 else:
                     card_id = get_deterministic_card_id(group_id, direction)
+                    card_anki_id = uuid.uuid4()
                     back_audio = Binary(audio_bytes) if audio_bytes else None
                     audio_name = audio_filename if audio_bytes else None
                     cur.execute(
                         """
                         INSERT INTO cards (
                             id, card_group_id, deck_id, owner_id, direction,
-                            payload, front_audio, back_audio, audio_filename
+                            payload, front_audio, back_audio, audio_filename, anki_id
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             _uuid(card_id),
@@ -641,6 +674,7 @@ def update_card_group(
                             None,
                             back_audio,
                             audio_name,
+                            _uuid(card_anki_id),
                         ),
                     )
 
@@ -678,11 +712,21 @@ def get_card_audio(owner_id: uuid.UUID, card_id: uuid.UUID, side: str) -> Option
             return bytes(row[0])
 
 
-def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) -> int:
+def restore_cards(
+    owner_id: uuid.UUID, 
+    deck_id: uuid.UUID, 
+    cards: List[dict], 
+    merge_strategy: str = "overwrite"
+) -> int:
     if not cards:
         return 0
     group_map: Dict[str, uuid.UUID] = {}
     inserted = 0
+    
+    # Validation
+    if merge_strategy not in ("overwrite", "newest"):
+        merge_strategy = "overwrite"
+
     with get_connection() as conn:
         with conn.cursor() as cur:
             for card in cards:
@@ -691,9 +735,6 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                     continue
                 original_group = card.get("card_group_id")
                 if original_group:
-                    # Try to maintain the same Group ID so that deterministic Card IDs remain stable across restores.
-                    # This allows Anki to recognize restored cards as the same identities.
-                    # Note: If these IDs already exist in the DB (e.g. deck wasn't deleted), this will raise a PK violation, which is expected.
                     target_group = uuid.UUID(str(original_group))
                     group_key = str(original_group)
                 else:
@@ -701,18 +742,29 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                     group_key = str(target_group)
 
                 mapped_group = group_map.setdefault(group_key, target_group)
-                
-                # Always generate deterministic ID based on the new group ID and direction
-                # This ensures the invariant CardID = fn(GroupID, Direction) holds for imported cards
                 new_card_id = get_deterministic_card_id(mapped_group, direction)
                 
+                anki_id = card.get("anki_id")
+                if anki_id:
+                    new_anki_id = uuid.UUID(str(anki_id))
+                else:
+                     new_anki_id = uuid.uuid4()
+
                 payload = card.get("payload") or {}
                 created_at = card.get("created_at")
                 updated_at = card.get("updated_at") or created_at
                 front_audio = card.get("front_audio")
                 back_audio = card.get("back_audio")
+                
+                # Build SQL based on strategy
+                update_condition = ""
+                if merge_strategy == "newest":
+                    # Only update if the excluded (new) updated_at is OLDER (greater) than existing?
+                    # No, Newest wins means: If Incoming.updated_at > Existing.updated_at, then Update.
+                    update_condition = "WHERE EXCLUDED.updated_at > cards.updated_at"
+                    
                 cur.execute(
-                    """
+                    f"""
                     INSERT INTO cards (
                         id,
                         card_group_id,
@@ -724,9 +776,23 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                         back_audio,
                         audio_filename,
                         created_at,
-                        updated_at
+                        updated_at,
+                        anki_id
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    ON CONFLICT (id) DO UPDATE SET
+                        card_group_id = EXCLUDED.card_group_id,
+                        deck_id = EXCLUDED.deck_id,
+                        owner_id = EXCLUDED.owner_id,
+                        direction = EXCLUDED.direction,
+                        payload = EXCLUDED.payload,
+                        front_audio = COALESCE(EXCLUDED.front_audio, cards.front_audio),
+                        back_audio = COALESCE(EXCLUDED.back_audio, cards.back_audio),
+                        audio_filename = EXCLUDED.audio_filename,
+                        created_at = EXCLUDED.created_at,
+                        updated_at = EXCLUDED.updated_at,
+                        anki_id = COALESCE(cards.anki_id, EXCLUDED.anki_id)
+                    {update_condition}
                     """,
                     (
                         _uuid(new_card_id),
@@ -740,10 +806,14 @@ def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) ->
                         card.get("audio_filename"),
                         created_at,
                         updated_at,
+                        _uuid(new_anki_id),
                     ),
                 )
                 inserted += 1
         conn.commit()
+
+    return inserted
+
 
 def count_cards_in_deck(owner_id: uuid.UUID, deck_id: uuid.UUID) -> int:
     with get_connection() as conn:

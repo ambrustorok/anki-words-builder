@@ -88,6 +88,16 @@ def init_db():
             cur.execute(
                 "ALTER TABLE decks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
+            # Stable Anki ID for decks
+            cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS anki_id UUID"
+            )
+            cur.execute(
+                "UPDATE decks SET anki_id = id WHERE anki_id IS NULL"
+            )
+            cur.execute(
+                "ALTER TABLE decks ALTER COLUMN anki_id SET NOT NULL"
+            )
 
             # Cards
             cur.execute(
@@ -127,6 +137,16 @@ def init_db():
                 SET card_group_id = id
                 WHERE card_group_id IS NULL
                 """
+            )
+            # Stable Anki ID for cards
+            cur.execute(
+                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_id UUID"
+            )
+            cur.execute(
+                "UPDATE cards SET anki_id = id WHERE anki_id IS NULL"
+            )
+            cur.execute(
+                "ALTER TABLE cards ALTER COLUMN anki_id SET NOT NULL"
             )
 
             cur.execute(
