@@ -2,7 +2,7 @@ import io
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..services import cards as card_service
@@ -287,32 +287,10 @@ def backup_deck(deck_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/import")
-async def import_deck(
-    file: UploadFile = File(...), 
-    resolution: Optional[str] = "check",
-    user=Depends(get_current_user)
-):
+async def import_deck(file: UploadFile = File(...), user=Depends(get_current_user)):
     contents = await file.read()
     try:
-        deck = backup_service.import_backup(user["id"], contents, resolution=resolution)
-    except backup_service.ImportConflictError as exc:
-        # We return a 409 Conflict with the existing deck info so UI can show details.
-        # Serialization: ensure UUIDs are strings.
-        existing_deck = exc.deck
-        existing_deck["id"] = str(existing_deck["id"])
-        existing_deck["owner_id"] = str(existing_deck["owner_id"])
-        existing_deck["anki_id"] = str(existing_deck["anki_id"])
-        existing_deck["created_at"] = existing_deck["created_at"].isoformat() if existing_deck.get("created_at") else None
-        existing_deck["updated_at"] = existing_deck["updated_at"].isoformat() if existing_deck.get("updated_at") else None
-        
-        return JSONResponse(
-            status_code=409,
-            content={
-                "detail": str(exc),
-                "code": "DECK_CONFLICT",
-                "data": {"existing_deck": existing_deck}
-            }
-        )
+        deck = backup_service.import_backup(user["id"], contents)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"deck": deck}

@@ -2,11 +2,10 @@ import { ChangeEvent, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
-import { apiFetch, ApiError } from "../lib/api";
+import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { useSession } from "../lib/session";
 import { DeckQuickActions } from "../components/DeckQuickActions";
-import { ImportConflictModal } from "../components/ImportConflictModal";
 
 interface DeckListResponse {
   decks: any[];
@@ -17,11 +16,6 @@ export function DeckListPage() {
   const navigate = useNavigate();
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
-  const [conflictData, setConflictData] = useState<{
-    file: File;
-    existingDeck: any;
-  } | null>(null);
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["decks"],
@@ -40,51 +34,26 @@ export function DeckListPage() {
     fileInputRef.current?.click();
   };
 
-  const performImport = async (file: File, resolution?: string) => {
+  const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
     setImporting(true);
     setImportError("");
     try {
       const formData = new FormData();
       formData.append("file", file);
-
-      let url = "/decks/import";
-      if (resolution) {
-        url += `?resolution=${resolution}`;
-      }
-
-      const response = await apiFetch<{ deck: { id: string } }>(url, {
+      const response = await apiFetch<{ deck: { id: string } }>("/decks/import", {
         method: "POST",
         body: formData
       });
       await refetch();
-      setConflictData(null);
       navigate(`/decks/${response.deck.id}`);
     } catch (err) {
-      if (err instanceof ApiError && err.code === "DECK_CONFLICT") {
-        setConflictData({
-          file: file,
-          existingDeck: err.data?.existing_deck
-        });
-      } else {
-        setImportError((err as Error).message);
-      }
+      setImportError((err as Error).message);
     } finally {
       setImporting(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
+      event.target.value = "";
     }
-  };
-
-  const handleImportChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    performImport(file);
-  };
-
-  const handleResolveConflict = (resolution: "overwrite" | "newest") => {
-    if (!conflictData) return;
-    performImport(conflictData.file, resolution);
   };
 
   return (
@@ -124,20 +93,6 @@ export function DeckListPage() {
         </div>
       </div>
       {importError && <p className="mt-3 text-sm text-red-500">{importError}</p>}
-
-      {conflictData && (
-        <ImportConflictModal
-          isOpen={!!conflictData}
-          deckName={conflictData.existingDeck?.name || "Unknown Deck"}
-          existingLastModified={conflictData.existingDeck?.updated_at}
-          onResolve={handleResolveConflict}
-          onCancel={() => {
-            setConflictData(null);
-            setImporting(false);
-          }}
-        />
-      )}
-
       {data?.decks?.length ? (
         <div className="mt-6 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {data.decks.map((deck) => (

@@ -15,20 +15,6 @@ interface FetchOptions extends RequestInit {
   json?: unknown;
 }
 
-export class ApiError extends Error {
-  status: number;
-  code?: string;
-  data?: any;
-
-  constructor(message: string, status: number, code?: string, data?: any) {
-    super(message);
-    this.name = "ApiError";
-    this.status = status;
-    this.code = code;
-    this.data = data;
-  }
-}
-
 async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const headers = new Headers(options.headers ?? {});
   if (options.json !== undefined) {
@@ -42,17 +28,13 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   });
   if (!response.ok) {
     let detail = response.statusText;
-    let code: string | undefined;
-    let data: any | undefined;
     try {
-      const json = await response.json();
-      detail = json.detail || json.message || detail;
-      code = json.code;
-      data = json.data;
+      const data = await response.json();
+      detail = data.detail || data.message || detail;
     } catch (err) {
       // ignore parse errors
     }
-    throw new ApiError(detail, response.status, code, data);
+    throw new Error(detail);
   }
   if (response.status === 204) {
     return undefined as T;

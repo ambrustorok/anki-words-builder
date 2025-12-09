@@ -247,37 +247,8 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                 field_schema: Optional[List[dict]] = None,
                 prompt_templates: Optional[dict] = None,
                 audio_instructions: Optional[str] = None,
-                audio_enabled: Optional[bool] = None,
-                anki_id: Optional[uuid.UUID] = None) -> dict:
-    # Deterministic ID based on owner and name
-    oid = owner_id
-    if isinstance(oid, str):
-        oid = uuid.UUID(oid)
-    deck_id = uuid.uuid5(oid, name.strip())
-    
-    # Stable Anki ID: Use provided or generate random (if new)
-    # If this deck already exists (handled by UPSERT), we typically want to preserve its anki_id
-    # UNLESS we are explicitly restoring from backup which might dictate the anki_id.
-    # However, for simple creation, generate random.
-    # The UPSERT below will update anki_id to EXCLUDED.anki_id. 
-    # If we want to PRESERVE existing anki_id on conflict when we didn't pass one, 
-    # we need a way to say "keep existing".
-    # But currently `create_deck` is used for "Create New" or "Update Metadata".
-    # When "Create New" (UI), anki_id is None -> Random.
-    # If collision (Deck exists), we would overwrite anki_id with a new Random one? That's bad.
-    # We should only update anki_id if it's explicitly passed (Restoration)?
-    # Or, we should fetch existing first?
-    # Better: Use COALESCE in SQL: `anki_id = COALESCE(decks.anki_id, EXCLUDED.anki_id)`?
-    # No, if we pass an explicit one, we want it. If we pass a random new one (default), we don't want to overwrite existing.
-    
-    # Strategy:
-    # 1. If anki_id is passed (Import/Restore), use it.
-    # 2. If anki_id is NOT passed (UI Create):
-    #    We generate a new one strictly for the INSERT case.
-    #    For the UPDATE case (conflict), we want to KEEP existing `decks.anki_id`.
-    
-    final_anki_id = anki_id if anki_id else uuid.uuid4()
-    
+                audio_enabled: Optional[bool] = None) -> dict:
+    deck_id = uuid.uuid4()
     schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
     prompts = deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
     audio_cfg = prompts.get("audio") or {}
@@ -294,15 +265,9 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT (id) DO UPDATE SET
-                    target_language = EXCLUDED.target_language,
-                    field_schema = EXCLUDED.field_schema,
-                    prompt_templates = EXCLUDED.prompt_templates,
-                    anki_id = CASE WHEN %s::uuid IS NOT NULL THEN EXCLUDED.anki_id ELSE decks.anki_id END,
-                    updated_at = NOW()
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at, anki_id
+                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates)
+                VALUES (%s, %s, %s, %s, %s, %s)
+                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at
                 """,
                 (
                     _uuid(deck_id),
@@ -311,8 +276,6 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                     target_language.strip(),
                     Json(schema),
                     Json(prompts),
-                    _uuid(final_anki_id),
-                    _uuid(anki_id) if anki_id else None, 
                 ),
             )
             deck = cur.fetchone()
@@ -431,7 +394,6 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
             cur.execute(
                 """
                 SELECT d.id,
-                       d.anki_id,
                        d.name,
                        d.target_language,
                        d.field_schema,
@@ -442,32 +404,6 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                 WHERE d.id = %s AND d.owner_id = %s
                 """,
                 (_uuid(deck_id), _uuid(owner_id)),
-            )
-            deck = cur.fetchone()
-    if not deck:
-        return None
-    deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
-    return deck
-
-
-def get_deck_by_anki_id(owner_id: uuid.UUID, anki_id: uuid.UUID) -> Optional[dict]:
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT d.id,
-                       d.owner_id,
-                       d.anki_id,
-                       d.name,
-                       d.target_language,
-                       d.field_schema,
-                       d.prompt_templates,
-                       d.created_at,
-                       d.updated_at
-                FROM decks d
-                WHERE d.owner_id = %s AND d.anki_id = %s
-                """,
-                (_uuid(owner_id), _uuid(anki_id)),
             )
             deck = cur.fetchone()
     if not deck:

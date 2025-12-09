@@ -112,19 +112,6 @@ export function ProfilePage() {
         </div>
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">User ID</p>
-            <div className="flex items-center gap-2">
-              <code className="text-xs font-mono text-slate-700 dark:text-slate-300 break-all">{user?.id}</code>
-              <button
-                className="text-xs text-brand hover:underline"
-                onClick={() => navigator.clipboard.writeText(user?.id || "")}
-              >
-                Copy
-              </button>
-            </div>
-            <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">Internal unique identifier</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
             <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Native language</p>
             <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">{nativeLanguage}</p>
             <p className="text-xs text-slate-500 dark:text-slate-400">Set during onboarding</p>
