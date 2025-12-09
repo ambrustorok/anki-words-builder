@@ -15,6 +15,18 @@ interface FetchOptions extends RequestInit {
   json?: unknown;
 }
 
+class ApiError extends Error {
+  status: number;
+  data?: unknown;
+
+  constructor(message: string, status: number, data?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.data = data;
+  }
+}
+
 async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T> {
   const headers = new Headers(options.headers ?? {});
   if (options.json !== undefined) {
@@ -26,21 +38,24 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
     credentials: "include",
     body: options.json !== undefined ? JSON.stringify(options.json) : options.body
   });
-  if (!response.ok) {
-    let detail = response.statusText;
+  const text = await response.text();
+  let data: unknown = undefined;
+  if (text) {
     try {
-      const data = await response.json();
-      detail = data.detail || data.message || detail;
-    } catch (err) {
-      // ignore parse errors
+      data = JSON.parse(text);
+    } catch {
+      data = text;
     }
-    throw new Error(detail);
+  }
+  if (!response.ok) {
+    const payload = typeof data === "object" && data !== null ? (data as Record<string, unknown>) : undefined;
+    const detail = (payload?.detail as string) || (payload?.message as string) || response.statusText;
+    throw new ApiError(detail, response.status, data);
   }
   if (response.status === 204) {
     return undefined as T;
   }
-  const text = await response.text();
-  return text ? (JSON.parse(text) as T) : (undefined as T);
+  return (data as T) ?? (undefined as T);
 }
 
-export { API_BASE_URL, apiFetch };
+export { API_BASE_URL, ApiError, apiFetch };

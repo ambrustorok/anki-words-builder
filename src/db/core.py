@@ -86,6 +86,12 @@ def init_db():
                 """
             )
             cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS anki_id UUID"
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_anki_id ON decks (anki_id)"
+            )
+            cur.execute(
                 "ALTER TABLE decks ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
 
@@ -107,6 +113,9 @@ def init_db():
                 """
             )
             cur.execute(
+                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS entry_anki_id UUID"
+            )
+            cur.execute(
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS front_audio BYTEA"
             )
             cur.execute(
@@ -124,9 +133,22 @@ def init_db():
             cur.execute(
                 """
                 UPDATE cards
+                SET entry_anki_id = card_group_id
+                WHERE entry_anki_id IS NULL AND card_group_id IS NOT NULL
+                """
+            )
+            cur.execute(
+                """
+                UPDATE cards
                 SET card_group_id = id
                 WHERE card_group_id IS NULL
                 """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_cards_entry_anki ON cards (entry_anki_id)"
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_deck_entry_direction ON cards (deck_id, entry_anki_id, direction)"
             )
 
             cur.execute(
@@ -160,3 +182,14 @@ def init_db():
             )
 
             conn.commit()
+
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT id FROM decks WHERE anki_id IS NULL")
+            missing = cur.fetchall()
+            for row in missing:
+                cur.execute(
+                    "UPDATE decks SET anki_id = %s WHERE id = %s",
+                    (str(uuid.uuid4()), row["id"]),
+                )
+            if missing:
+                conn.commit()

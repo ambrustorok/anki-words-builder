@@ -6,6 +6,8 @@ from typing import List, Optional
 
 import genanki
 
+from .cards import stable_card_guid
+
 
 def _anki_id(seed: str) -> int:
     return uuid.uuid5(uuid.NAMESPACE_OID, seed).int & 0x7FFFFFFF
@@ -31,9 +33,19 @@ class TimestampedNote(genanki.Note):
         super().write_to_db(cursor, effective_timestamp, deck_id, id_gen)
 
 
+def _entry_uuid(card: dict) -> uuid.UUID:
+    candidate = card.get("entry_anki_id") or card.get("card_group_id") or card.get("id")
+    try:
+        return uuid.UUID(str(candidate))
+    except (ValueError, TypeError, AttributeError):
+        seed = str(card.get("id")) if card.get("id") else uuid.uuid4().hex
+        return uuid.uuid5(uuid.NAMESPACE_URL, f"fallback-entry-{seed}")
+
+
 def export_deck(deck: dict, cards: List[dict]) -> bytes:
-    deck_identifier = _anki_id(f"deck-{deck['id']}")
-    model_identifier = _anki_id(f"model-{deck['id']}")
+    deck_key = deck.get("anki_id") or deck.get("id")
+    deck_identifier = _anki_id(f"deck-{deck_key}")
+    model_identifier = _anki_id(f"model-{deck_key}")
 
     anki_deck = genanki.Deck(deck_identifier, f"{deck['name']} ({deck['target_language']})")
     model = genanki.Model(
@@ -90,7 +102,8 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     written_files[filename] = file_path
                 back_audio_tag = f"<br>[sound:{filename}]"
 
-            note_guid = card["id"].replace("-", "")
+            entry_uuid = _entry_uuid(card)
+            note_guid = stable_card_guid(entry_uuid, card.get("direction") or "forward")
             note = TimestampedNote(
                 model=model,
                 fields=[

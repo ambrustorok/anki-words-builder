@@ -247,8 +247,10 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                 field_schema: Optional[List[dict]] = None,
                 prompt_templates: Optional[dict] = None,
                 audio_instructions: Optional[str] = None,
-                audio_enabled: Optional[bool] = None) -> dict:
+                audio_enabled: Optional[bool] = None,
+                anki_id: Optional[uuid.UUID] = None) -> dict:
     deck_id = uuid.uuid4()
+    deck_anki_id = anki_id or uuid.uuid4()
     schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
     prompts = deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
     audio_cfg = prompts.get("audio") or {}
@@ -265,9 +267,9 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates)
-                VALUES (%s, %s, %s, %s, %s, %s)
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at
+                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at, anki_id
                 """,
                 (
                     _uuid(deck_id),
@@ -276,6 +278,7 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                     target_language.strip(),
                     Json(schema),
                     Json(prompts),
+                    _uuid(deck_anki_id),
                 ),
             )
             deck = cur.fetchone()
@@ -296,6 +299,7 @@ def list_decks(owner_id: uuid.UUID) -> List[dict]:
             cur.execute(
                 """
                 SELECT d.id,
+                       d.anki_id,
                        d.name,
                        d.target_language,
                        d.field_schema,
@@ -328,6 +332,7 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
             cur.execute(
                 """
                 SELECT d.id,
+                       d.anki_id,
                        d.name,
                        d.target_language,
                        d.field_schema,
@@ -361,6 +366,7 @@ def list_least_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
             cur.execute(
                 """
                 SELECT d.id,
+                       d.anki_id,
                        d.name,
                        d.target_language,
                        d.field_schema,
@@ -394,6 +400,7 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
             cur.execute(
                 """
                 SELECT d.id,
+                       d.anki_id,
                        d.name,
                        d.target_language,
                        d.field_schema,
@@ -409,6 +416,73 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
     if not deck:
         return None
     deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
+    return deck
+
+
+def get_deck_by_anki_id(owner_id: uuid.UUID, anki_id: uuid.UUID) -> Optional[dict]:
+    if not anki_id:
+        return None
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT d.id,
+                       d.anki_id,
+                       d.name,
+                       d.target_language,
+                       d.field_schema,
+                       d.prompt_templates,
+                       d.created_at,
+                       d.updated_at
+                FROM decks d
+                WHERE d.owner_id = %s AND d.anki_id = %s
+                """,
+                (_uuid(owner_id), _uuid(anki_id)),
+            )
+            deck = cur.fetchone()
+    if not deck:
+        return None
+    deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
+    return deck
+
+
+def apply_backup_metadata(
+    owner_id: uuid.UUID,
+    deck_id: uuid.UUID,
+    *,
+    name: str,
+    target_language: str,
+    field_schema: Optional[List[dict]],
+    prompt_templates: Optional[dict],
+) -> Optional[dict]:
+    schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
+    prompts = deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                UPDATE decks
+                SET name = %s,
+                    target_language = %s,
+                    field_schema = %s,
+                    prompt_templates = %s,
+                    updated_at = NOW()
+                WHERE id = %s AND owner_id = %s
+                RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, created_at, updated_at
+                """,
+                (
+                    name.strip(),
+                    target_language.strip(),
+                    Json(schema),
+                    Json(prompts),
+                    _uuid(deck_id),
+                    _uuid(owner_id),
+                ),
+            )
+            deck = cur.fetchone()
+        conn.commit()
+    if deck:
+        deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
     return deck
 
 

@@ -1,8 +1,8 @@
 import io
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, File, UploadFile
-from fastapi.responses import StreamingResponse
+from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from ..services import cards as card_service
@@ -287,10 +287,16 @@ def backup_deck(deck_id: str, user=Depends(get_current_user)):
 
 
 @router.post("/import")
-async def import_deck(file: UploadFile = File(...), user=Depends(get_current_user)):
+async def import_deck(
+    file: UploadFile = File(...),
+    policy: Optional[str] = Form(None),
+    user=Depends(get_current_user),
+):
     contents = await file.read()
     try:
-        deck = backup_service.import_backup(user["id"], contents)
+        deck = backup_service.import_backup(user["id"], contents, policy=policy)
+    except backup_service.DeckImportConflict as conflict:
+        return JSONResponse(status_code=409, content=conflict.payload)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     return {"deck": deck}

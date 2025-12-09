@@ -116,6 +116,18 @@ Use `VITE_API_URL` if the SPA is served from a different host/port than the API.
 - Cloudflare-integrated multi-email accounts, profile management UI, and admin console.
 - Typer CLI for batch operations: list users, add/remove emails, grant/revoke admin access, or delete profiles.
 - Export-ready data for Anki with predictable HTML structure and audio attachments.
+- Deterministic Anki IDs per deck + entry so exports, backups, and cross-environment edits stay in sync.
+
+## Backups, Imports, and Anki IDs
+
+- **Deck + entry IDs**: Every deck is assigned an `anki_id` (UUID) and each entry (card group) gets its own `entry_anki_id`. Card GUIDs exported to Anki are derived from `(entry_anki_id, direction)`, so deleting/re-adding directions or restoring from backups always reuses the same note IDs.
+- **Backups**: `/decks/{id}/backup` produces a `.awdeck` zip (manifest v2) that captures deck metadata, prompt templates, payloads, audio, and the deterministic Anki identifiers.
+- **Imports**: `/decks/import` accepts the `.awdeck` file plus an optional `policy` form field:
+  - `override` (default via UI “Override existing deck”) – replace the entire deck with the backup contents.
+  - `prefer_newest` – compare `entry_anki_id + direction` timestamps and keep whichever version has the latest `updated_at`.
+  - `only_new` – import entries that don’t already exist (no changes to existing ones).
+  If no policy is provided and the deck’s `anki_id` already exists, the API returns `409` with the conflict payload so the frontend can prompt the user.
+- **Cross-environment editing**: Because IDs stay fixed, you can export from environment A, import into B, continue editing, then move the deck back without creating duplicates. Even if you toggle individual directions off/on, Anki sees the same GUID and updates the original note instead of creating a new one.
 
 ## Cloudflare Tunnel Tips
 

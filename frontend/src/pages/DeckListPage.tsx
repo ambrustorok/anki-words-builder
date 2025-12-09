@@ -2,10 +2,11 @@ import { ChangeEvent, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate } from "react-router-dom";
 
-import { apiFetch } from "../lib/api";
+import { ApiError, apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { useSession } from "../lib/session";
 import { DeckQuickActions } from "../components/DeckQuickActions";
+import { DeckImportConflictPayload, ImportConflictModal } from "../components/ImportConflictModal";
 
 interface DeckListResponse {
   decks: any[];
@@ -16,6 +17,8 @@ export function DeckListPage() {
   const navigate = useNavigate();
   const [importing, setImporting] = useState(false);
   const [importError, setImportError] = useState("");
+  const [conflictState, setConflictState] = useState<{ file: File; payload: DeckImportConflictPayload } | null>(null);
+  const [resolvingConflict, setResolvingConflict] = useState(false);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["decks"],
@@ -49,10 +52,40 @@ export function DeckListPage() {
       await refetch();
       navigate(`/decks/${response.deck.id}`);
     } catch (err) {
-      setImportError((err as Error).message);
+      if (err instanceof ApiError && err.status === 409 && (err.data as DeckImportConflictPayload)?.code === "DECK_IMPORT_CONFLICT") {
+        setConflictState({ file, payload: err.data as DeckImportConflictPayload });
+      } else {
+        setImportError((err as Error).message);
+      }
     } finally {
       setImporting(false);
       event.target.value = "";
+    }
+  };
+
+  const handleConflictCancel = () => {
+    setConflictState(null);
+  };
+
+  const handleConflictSelect = async (policy: string) => {
+    if (!conflictState) return;
+    setResolvingConflict(true);
+    setImportError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", conflictState.file);
+      formData.append("policy", policy);
+      const response = await apiFetch<{ deck: { id: string } }>("/decks/import", {
+        method: "POST",
+        body: formData
+      });
+      setConflictState(null);
+      await refetch();
+      navigate(`/decks/${response.deck.id}`);
+    } catch (err) {
+      setImportError((err as Error).message);
+    } finally {
+      setResolvingConflict(false);
     }
   };
 
@@ -153,6 +186,14 @@ export function DeckListPage() {
         <div className="mt-6 rounded-2xl border border-dashed border-slate-200 p-6 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-300">
           <p>No decks yet. Create one or import a backup to get started.</p>
         </div>
+      )}
+      {conflictState && (
+        <ImportConflictModal
+          payload={conflictState.payload}
+          isSubmitting={resolvingConflict}
+          onSelect={handleConflictSelect}
+          onCancel={handleConflictCancel}
+        />
       )}
     </section>
   );
