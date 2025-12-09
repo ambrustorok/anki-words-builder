@@ -52,9 +52,18 @@ def generate_entry_anki_id() -> uuid.UUID:
     return uuid.uuid4()
 
 
+def stable_card_uuid(entry_anki_id: uuid.UUID, direction: str) -> uuid.UUID:
+    normalized_direction = direction if direction in ("forward", "backward") else "forward"
+    try:
+        entry_uuid = uuid.UUID(str(entry_anki_id))
+    except (TypeError, ValueError, AttributeError):
+        entry_uuid = uuid.uuid4()
+    seed = f"{entry_uuid}:{normalized_direction}"
+    return uuid.uuid5(CARD_GUID_NAMESPACE, seed)
+
+
 def stable_card_guid(entry_anki_id: uuid.UUID, direction: str) -> str:
-    seed = f"{entry_anki_id}:{direction}"
-    return uuid.uuid5(CARD_GUID_NAMESPACE, seed).hex
+    return stable_card_uuid(entry_anki_id, direction).hex
 
 
 def _validate_payload(payload: dict, field_schema: List[dict]):
@@ -114,15 +123,16 @@ def create_cards(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             for direction in valid_directions:
                 card_id = uuid.uuid4()
+                card_anki_id = stable_card_uuid(entry_anki_id, direction)
                 front_audio = None
                 back_audio = audio_bytes if audio_bytes else None
                 cur.execute(
                     """
                     INSERT INTO cards (
                         id, card_group_id, entry_anki_id, deck_id, owner_id, direction,
-                        payload, front_audio, back_audio, audio_filename
+                        payload, front_audio, back_audio, audio_filename, anki_id
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         _uuid(card_id),
@@ -135,6 +145,7 @@ def create_cards(
                         Binary(front_audio) if front_audio else None,
                         Binary(back_audio) if back_audio else None,
                         audio_filename,
+                        _uuid(card_anki_id),
                     ),
                 )
         conn.commit()
@@ -634,15 +645,16 @@ def update_card_group(
                     cur.execute(sql, params)
                 else:
                     card_id = uuid.uuid4()
+                    card_anki_id = stable_card_uuid(entry_anki_id, direction)
                     back_audio = Binary(audio_bytes) if audio_bytes else None
                     audio_name = audio_filename if audio_bytes else None
                     cur.execute(
                         """
                         INSERT INTO cards (
                             id, card_group_id, entry_anki_id, deck_id, owner_id, direction,
-                            payload, front_audio, back_audio, audio_filename
+                            payload, front_audio, back_audio, audio_filename, anki_id
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             _uuid(card_id),
@@ -655,6 +667,7 @@ def update_card_group(
                             None,
                             back_audio,
                             audio_name,
+                            _uuid(card_anki_id),
                         ),
                     )
 
@@ -921,6 +934,8 @@ def _insert_entry_card(
     updated_at = card.get("updated_at") or created_at
     front_audio = card.get("front_audio")
     back_audio = card.get("back_audio")
+    direction = card.get("direction")
+    card_anki_uuid = stable_card_uuid(entry_uuid, direction)
     cur.execute(
         """
         INSERT INTO cards (
@@ -935,9 +950,10 @@ def _insert_entry_card(
             back_audio,
             audio_filename,
             created_at,
-            updated_at
+            updated_at,
+            anki_id
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             _uuid(card_id),
@@ -945,13 +961,14 @@ def _insert_entry_card(
             _uuid(entry_uuid),
             _uuid(deck_id),
             _uuid(owner_id),
-            card.get("direction"),
+            direction,
             Json(payload),
             Binary(front_audio) if front_audio else None,
             Binary(back_audio) if back_audio else None,
             card.get("audio_filename"),
             created_at,
             updated_at,
+            _uuid(card_anki_uuid),
         ),
     )
     return str(card_id)

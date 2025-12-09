@@ -116,6 +116,9 @@ def init_db():
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS entry_anki_id UUID"
             )
             cur.execute(
+                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_id UUID"
+            )
+            cur.execute(
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS front_audio BYTEA"
             )
             cur.execute(
@@ -140,9 +143,22 @@ def init_db():
             cur.execute(
                 """
                 UPDATE cards
+                SET anki_id = id
+                WHERE anki_id IS NULL
+                """
+            )
+            cur.execute(
+                """
+                UPDATE cards
                 SET card_group_id = id
                 WHERE card_group_id IS NULL
                 """
+            )
+            cur.execute(
+                "ALTER TABLE cards ALTER COLUMN anki_id SET NOT NULL"
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_anki_id ON cards (anki_id)"
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cards_entry_anki ON cards (entry_anki_id)"
