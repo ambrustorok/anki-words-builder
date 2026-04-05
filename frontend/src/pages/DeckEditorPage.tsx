@@ -286,13 +286,19 @@ export function DeckEditorPage({ mode }: Props) {
     if (!deckId || !newTagName.trim()) return;
     setTagError("");
     try {
+      const catName = newTagCategory.trim();
+      // Inherit category_exclusive from existing tags in the same category
+      const catExclusive = deckTags.some(
+        (t) => t.category === catName && t.category_exclusive === true
+      );
       const tag = await apiFetch<DeckTag>(`/tags/decks/${deckId}/tags`, {
         method: "POST",
         json: {
           name: newTagName.trim(),
-          category: newTagCategory.trim(),
+          category: catName,
           color: newTagColor,
-          sort_order: deckTags.filter((t) => t.category === newTagCategory.trim()).length,
+          sort_order: deckTags.filter((t) => t.category === catName).length,
+          category_exclusive: catExclusive,
         },
       });
       setDeckTags((prev) => [...prev, tag]);

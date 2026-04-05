@@ -96,8 +96,17 @@ export function GenerateCardsPage() {
 
   const deck = deckQuery.data?.deck;
   const allTags: DeckTag[] = tagsQuery.data?.tags ?? [];
-  const exclusiveCats = allTags.filter((t) => t.category_exclusive);
-  const exclusiveCatNames = [...new Set(exclusiveCats.map((t) => t.category))];
+
+  // A category is exclusive if ANY of its tags has category_exclusive=true.
+  // This is robust to inconsistent per-tag data (e.g. pre-existing tags).
+  const exclusiveCatNames = [...new Set(
+    allTags
+      .filter((t) => t.category && t.category_exclusive === true)
+      .map((t) => t.category)
+  )];
+
+  // All tags whose category is exclusive (used for constraint UI)
+  const exclusiveCatSet = new Set(exclusiveCatNames);
 
   // ---- Form state (seeded from localStorage) ----
   const prefs = deckId ? loadPrefs(deckId) : {};
