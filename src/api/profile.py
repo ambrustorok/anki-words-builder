@@ -180,36 +180,25 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
 
     client = api_key_service.get_openai_client_for_user(user["id"])
 
-    # --- Text model: single-token completion, cheapest possible call ---
-    # Newer models (gpt-5, o-series) require max_completion_tokens; older ones
-    # use max_tokens. Try the new param first, fall back to the old one.
+    # --- Text model: cheapest possible call ---
+    # Try max_completion_tokens first (required by gpt-5, o-series and newer).
+    # If that fails for any reason, retry with legacy max_tokens.
+    # Only report failure if both attempts fail.
     text_ok = False
     text_error: Optional[str] = None
+    _model = payload.text_model.strip()
+    _msg = [{"role": "user", "content": "Hi"}]
     try:
-        try:
-            client.chat.completions.create(
-                model=payload.text_model.strip(),
-                messages=[{"role": "user", "content": "Hi"}],
-                max_completion_tokens=1,
-            )
-        except Exception as inner:
-            msg = str(inner).lower()
-            if (
-                "max_completion_tokens" in msg
-                or "unknown field" in msg
-                or "unrecognized" in msg
-            ):
-                # Model doesn't support max_completion_tokens — try legacy param
-                client.chat.completions.create(
-                    model=payload.text_model.strip(),
-                    messages=[{"role": "user", "content": "Hi"}],
-                    max_tokens=1,
-                )
-            else:
-                raise
+        client.chat.completions.create(
+            model=_model, messages=_msg, max_completion_tokens=1
+        )
         text_ok = True
-    except Exception as exc:
-        text_error = _extract_openai_error(exc)
+    except Exception:
+        try:
+            client.chat.completions.create(model=_model, messages=_msg, max_tokens=1)
+            text_ok = True
+        except Exception as exc:
+            text_error = _extract_openai_error(exc)
 
     # --- Audio model: shortest possible TTS input ---
     audio_ok = False
