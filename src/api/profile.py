@@ -193,12 +193,20 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
             model=_model, messages=_msg, max_completion_tokens=1
         )
         text_ok = True
-    except Exception:
+    except Exception as first_exc:
+        first_error = _extract_openai_error(first_exc)
         try:
             client.chat.completions.create(model=_model, messages=_msg, max_tokens=1)
             text_ok = True
-        except Exception as exc:
-            text_error = _extract_openai_error(exc)
+        except Exception as second_exc:
+            second_msg = str(second_exc).lower()
+            # If the fallback itself says "use max_completion_tokens instead",
+            # the model is new but the first call failed for a real reason —
+            # report the first error, not the confusing fallback error.
+            if "max_completion_tokens" in second_msg:
+                text_error = first_error
+            else:
+                text_error = _extract_openai_error(second_exc)
 
     # --- Audio model: shortest possible TTS input ---
     audio_ok = False
