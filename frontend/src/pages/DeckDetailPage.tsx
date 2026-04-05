@@ -94,9 +94,11 @@ export function DeckDetailPage() {
           </Link>
         </div>
         {data?.cards?.length ? (
-          data.cards.map((group) => (
-            <CardGroupItem key={group.group_id} group={group} onDelete={deleteCard} />
-          ))
+          <div className="grid gap-4 md:grid-cols-2">
+            {data.cards.map((group) => (
+              <CardGroupItem key={group.group_id} group={group} onDelete={deleteCard} />
+            ))}
+          </div>
         ) : (
           <p className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
             No cards yet. Start by adding one.

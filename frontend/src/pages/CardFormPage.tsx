@@ -392,7 +392,7 @@ export function CardFormPage({ mode }: Props) {
   }
 
   return (
-    <section className="space-y-6">
+    <section className="mx-auto max-w-4xl space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex flex-wrap items-center justify-between gap-4">
           <div>

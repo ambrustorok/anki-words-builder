@@ -183,7 +183,7 @@ export function DeckCardsPage() {
                 </div>
             )}
 
-            <div className="space-y-4">
+            <div className="grid gap-4 md:grid-cols-2">
                 {isLoading && !data ? (
                     <LoadingScreen label="Loading cards" />
                 ) : data?.cards.length ? (

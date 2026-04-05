@@ -59,7 +59,7 @@ export function Layout({ children }: LayoutProps) {
     <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Desktop top bar */}
       <header className="hidden md:block border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
           <Link to="/" className="text-base font-semibold text-slate-900 dark:text-white">
             Anki Words Builder
           </Link>
@@ -103,7 +103,7 @@ export function Layout({ children }: LayoutProps) {
       </header>
 
       {/* Page content — pad bottom on mobile for tab bar */}
-      <main className="mx-auto max-w-3xl px-3 py-5 pb-24 sm:px-4 md:pb-8">
+      <main className="mx-auto max-w-3xl px-3 py-5 pb-24 sm:px-4 md:max-w-7xl md:px-8 md:pb-8">
         {children}
       </main>
 
