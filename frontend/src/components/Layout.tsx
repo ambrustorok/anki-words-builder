@@ -1,5 +1,5 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { ReactNode, useEffect, useState } from "react";
+import { ReactNode } from "react";
 import { useSession } from "../lib/session";
 import { getCloudflareLogoutUrl } from "../lib/logout";
 
@@ -7,94 +7,136 @@ interface LayoutProps {
   children: ReactNode;
 }
 
-const desktopLinkClasses =
-  "px-3 py-2 text-sm font-medium text-slate-600 hover:text-slate-900 dark:text-slate-300 dark:hover:text-white";
-const mobileLinkClasses =
-  "block rounded-lg px-3 py-2 text-base font-semibold text-slate-700 hover:bg-slate-100 dark:text-slate-200 dark:hover:bg-slate-800";
+// SVG icons for bottom nav
+const icons = {
+  home: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <path d="M3 12L12 3l9 9" /><path d="M9 21V12h6v9" /><path d="M3 12v9h18v-9" />
+    </svg>
+  ),
+  decks: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <rect x="2" y="7" width="20" height="14" rx="2" /><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2" />
+    </svg>
+  ),
+  profile: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <circle cx="12" cy="8" r="4" /><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7" />
+    </svg>
+  ),
+  help: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <circle cx="12" cy="12" r="10" /><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3" /><circle cx="12" cy="17" r=".5" fill="currentColor" />
+    </svg>
+  ),
+  admin: (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-6 w-6">
+      <path d="M12 2l3 6.5L22 10l-5 4.9L18.1 22 12 18.8 5.9 22 7 14.9 2 10l7-1.5L12 2z" />
+    </svg>
+  ),
+};
 
 export function Layout({ children }: LayoutProps) {
   const session = useSession();
   const user = session.data?.user;
   const logoutHref = getCloudflareLogoutUrl();
-  const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
 
-  useEffect(() => {
-    setMenuOpen(false);
-  }, [location.pathname]);
-
-  const navItems = [
-    { to: "/", label: "Dashboard" },
-    { to: "/decks", label: "Decks" },
-    { to: "/help", label: "Help" },
-    { to: "/profile", label: "Profile" },
-    ...(user?.isAdmin ? [{ to: "/admin/users", label: "Admin" }] : [])
+  type NavItem = { to: string; label: string; icon: ReactNode };
+  const navItems: NavItem[] = [
+    { to: "/", label: "Home", icon: icons.home },
+    { to: "/decks", label: "Decks", icon: icons.decks },
+    { to: "/profile", label: "Profile", icon: icons.profile },
+    { to: "/help", label: "Help", icon: icons.help },
+    ...(user?.isAdmin ? [{ to: "/admin/users", label: "Admin", icon: icons.admin }] : []),
   ];
 
+  const isActive = (to: string) =>
+    to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
+
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 transition-colors dark:bg-slate-950 dark:text-slate-100">
-      <header className="border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-4 sm:px-6">
-          <Link to="/" className="text-lg font-semibold text-slate-900 dark:text-white">
+    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+      {/* Desktop top bar */}
+      <header className="hidden md:block border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
+          <Link to="/" className="text-base font-semibold text-slate-900 dark:text-white">
             Anki Words Builder
           </Link>
-          <div className="flex items-center gap-3">
-            <nav className="hidden items-center gap-2 text-slate-600 md:flex dark:text-slate-300">
-              {navItems.map((item) => (
-                <NavLink key={item.to} className={desktopLinkClasses} to={item.to}>
-                  {item.label}
-                </NavLink>
-              ))}
-              {logoutHref && (
-                <a
-                  className="rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
-                  href={logoutHref}
-                >
-                  Log out
-                </a>
-              )}
-            </nav>
-            <button
-              type="button"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-full border border-slate-200 text-slate-600 transition hover:border-slate-400 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500 md:hidden"
-              onClick={() => setMenuOpen((open) => !open)}
-              aria-label="Toggle navigation menu"
-              aria-expanded={menuOpen}
-            >
-              <span className="sr-only">Toggle menu</span>
-              {menuOpen ? (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round">
-                  <path d="M6 18L18 6" />
-                  <path d="M6 6l12 12" />
-                </svg>
-              ) : (
-                <svg className="h-5 w-5" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.8" fill="none" strokeLinecap="round">
-                  <path d="M4 7h16" />
-                  <path d="M4 12h16" />
-                  <path d="M4 17h16" />
-                </svg>
-              )}
-            </button>
-          </div>
+          <nav className="flex items-center gap-1 text-sm text-slate-600 dark:text-slate-300">
+            {navItems.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.to === "/"}
+                className={({ isActive }) =>
+                  `px-3 py-2 rounded-lg font-medium transition ${
+                    isActive
+                      ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white"
+                      : "hover:bg-slate-50 dark:hover:bg-slate-800/50"
+                  }`
+                }
+              >
+                {item.label}
+              </NavLink>
+            ))}
+            {logoutHref && (
+              <a
+                className="ml-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
+                href={logoutHref}
+              >
+                Log out
+              </a>
+            )}
+          </nav>
         </div>
-        {menuOpen && (
-          <div className="border-t border-slate-200 bg-white px-4 py-4 shadow-md dark:border-slate-800 dark:bg-slate-900 md:hidden">
-            <nav className="space-y-1">
-              {navItems.map((item) => (
-                <NavLink key={item.to} className={mobileLinkClasses} to={item.to}>
-                  {item.label}
-                </NavLink>
-              ))}
-              {logoutHref && (
-                <a className={`${mobileLinkClasses} bg-slate-900 text-white dark:bg-white dark:text-slate-900`} href={logoutHref}>
-                  Log out
-                </a>
-              )}
-            </nav>
-          </div>
-        )}
       </header>
-      <main className="mx-auto max-w-6xl px-4 py-8 sm:px-6">{children}</main>
+
+      {/* Mobile top bar — app name only */}
+      <header className="md:hidden border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex items-center justify-between px-4 py-3">
+          <Link to="/" className="text-base font-semibold text-slate-900 dark:text-white">
+            Anki Words Builder
+          </Link>
+          {logoutHref && (
+            <a
+              className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
+              href={logoutHref}
+            >
+              Log out
+            </a>
+          )}
+        </div>
+      </header>
+
+      {/* Page content — pad bottom on mobile for tab bar */}
+      <main className="mx-auto max-w-3xl px-3 py-5 pb-24 sm:px-4 md:pb-8">
+        {children}
+      </main>
+
+      {/* Mobile bottom tab bar */}
+      <nav className="md:hidden fixed bottom-0 inset-x-0 z-50 border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900">
+        <div className="flex">
+          {navItems.map((item) => {
+            const active = isActive(item.to);
+            return (
+              <Link
+                key={item.to}
+                to={item.to}
+                className={`flex flex-1 flex-col items-center gap-0.5 py-2.5 text-[10px] font-medium transition ${
+                  active
+                    ? "text-brand"
+                    : "text-slate-400 dark:text-slate-500"
+                }`}
+              >
+                <span className={active ? "text-brand" : "text-slate-400 dark:text-slate-500"}>
+                  {item.icon}
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }

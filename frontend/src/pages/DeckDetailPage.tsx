@@ -37,35 +37,35 @@ export function DeckDetailPage() {
 
   return (
     <div className="space-y-6">
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="flex flex-wrap items-center gap-3">
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-sm uppercase text-slate-500 dark:text-slate-400">Deck</p>
-            <h1 className="text-2xl font-semibold text-slate-900 dark:text-white">{deck.name}</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Target language: {deck.target_language}</p>
+            <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Deck</p>
+            <h1 className="text-xl font-semibold text-slate-900 dark:text-white">{deck.name}</h1>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{deck.target_language}</p>
           </div>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <Link className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900" to={`/cards/new/${deck.id}`}>
+          <div className="flex flex-wrap gap-2">
+            <Link className="rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center" to={`/cards/new/${deck.id}`}>
               Add card
             </Link>
-            <Link className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200" to={`/decks/${deck.id}/edit`}>
-              Edit deck
+            <Link className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center" to={`/decks/${deck.id}/edit`}>
+              Edit
             </Link>
             <a
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200"
+              className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
               href={`${API_BASE_URL}/decks/${deck.id}/export`}
             >
               Export
             </a>
             <a
-              className="rounded-full border border-slate-300 px-4 py-2 text-sm dark:border-slate-600 dark:text-slate-200"
+              className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
               href={`${API_BASE_URL}/decks/${deck.id}/backup`}
             >
               Backup
             </a>
           </div>
         </div>
-        <div className="mt-4 grid gap-4 text-sm text-slate-600 md:grid-cols-3">
+        <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600 md:grid-cols-3">
           <div
             className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-900/60 dark:hover:bg-slate-800 cursor-pointer"
             onClick={navigateToCards}

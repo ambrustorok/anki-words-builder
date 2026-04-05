@@ -66,7 +66,7 @@ export function DashboardPage() {
         </div>
       )}
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex items-center justify-between">
           <div>
             <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Recently updated decks</h2>
@@ -83,7 +83,7 @@ export function DashboardPage() {
           )}
         </div>
         {data?.recentDecks?.length ? (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.recentDecks.map((deck) => (
               <article
                 key={deck.id}
@@ -137,10 +137,10 @@ export function DashboardPage() {
         )}
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+      <section className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <h2 className="text-xl font-semibold text-slate-900 dark:text-white">Last modified entries</h2>
         {data?.recentEntries?.length ? (
-          <div className="mt-4 grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {data.recentEntries.map((group) => {
               const hasForward = group.directions.some((d) => d.direction === "forward");
               const hasBackward = group.directions.some((d) => d.direction === "backward");

@@ -34,7 +34,7 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                     navigate(`/cards/${group.group_id}/edit`);
                 }
             }}
-            className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/70"
+            className="group rounded-3xl border border-slate-200 bg-white p-4 shadow-sm transition active:scale-[0.99] hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/70"
         >
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
                 <div className="flex flex-wrap gap-1">
@@ -54,16 +54,16 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                 </div>
                 <span className="text-slate-300 dark:text-slate-700">|</span>
                 <span>Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>
-                <div className="ml-auto flex gap-3 text-xs">
+                <div className="ml-auto flex gap-2 text-xs">
                     <Link
-                        className="text-brand"
+                        className="rounded-lg border border-brand/30 px-3 py-1.5 text-brand"
                         to={`/cards/${group.group_id}/edit`}
                         onClick={(event) => event.stopPropagation()}
                     >
                         Edit
                     </Link>
                     <button
-                        className="text-red-500"
+                        className="rounded-lg border border-red-200 px-3 py-1.5 text-red-500 dark:border-red-400/30"
                         onClick={(event) => {
                             event.stopPropagation();
                             onDelete(group.group_id);
@@ -73,7 +73,7 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                     </button>
                 </div>
             </div>
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
+            <div className="mt-4 grid gap-3">
                 {group.directions.map((direction) => (
                     <div key={direction.id} className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
                         <p className="text-xs uppercase text-slate-500 dark:text-slate-400">{direction.direction}</p>
