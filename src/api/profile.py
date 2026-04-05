@@ -15,46 +15,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile")
 
-# The OpenAI /models endpoint returns only: id, created, object, owned_by.
-# There is no capability/type field, so we classify by ID pattern.
-
-# A model ID is an audio/TTS model if its ID contains any of these substrings.
-_AUDIO_INCLUDE = ("tts",)
-
-# A model ID is a usable text/chat model only if it matches at least one include
-# pattern AND none of the exclude patterns.
-_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "chatgpt")
-_TEXT_EXCLUDE = (
-    "tts",
-    "realtime",
-    "transcribe",
-    "whisper",
-    "dall",
-    "dall-e",
-    "embedding",
-    "search",
-    "moderation",
-    "audio",
-    "vision-preview",
-    "instruct",  # old completions-only models
-    "0301",
-    "0314",  # very old snapshots
-)
-
-# Curated fallback shown when no API key is available.
-_FALLBACK_TEXT_MODELS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "o4-mini",
-    "o3",
-    "o1",
-    "chatgpt-4o-latest",
-]
-_FALLBACK_AUDIO_MODELS = [
-    "gpt-4o-mini-tts",
-    "tts-1",
-    "tts-1-hd",
-]
+DEFAULT_AUDIO_MODEL = "gpt-4o-mini-tts"
 
 
 class APIKeyPayload(BaseModel):
@@ -69,6 +30,11 @@ class EmailPayload(BaseModel):
 class ModelPrefsPayload(BaseModel):
     text_model: Optional[str] = Field(None, alias="textModel")
     audio_model: Optional[str] = Field(None, alias="audioModel")
+
+
+class ModelTestPayload(BaseModel):
+    text_model: str = Field(..., alias="textModel")
+    audio_model: str = Field(..., alias="audioModel")
 
 
 @router.get("")
@@ -105,72 +71,64 @@ def delete_api_key(user=Depends(get_current_user)):
     return {"status": "ok"}
 
 
-@router.get("/models/available")
-def available_models(user=Depends(get_current_user)):
+@router.post("/models/test")
+def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
     """
-    Return filtered model lists from OpenAI.
-
-    The OpenAI /models endpoint returns only id, created, object, owned_by —
-    there is no capability or type field. We classify models by ID patterns,
-    which is the only approach the API allows. Falls back to a curated list
-    when no key is configured or the API is unreachable.
+    Validate that the given text and audio model IDs actually work.
+    Uses the cheapest possible API calls to minimise cost.
+    Returns per-model ok/error without raising — the UI decides what to do.
     """
     if not api_key_service.user_can_generate(user["id"]):
-        # Return curated fallback so the UI is still usable without a key.
-        return {
-            "textModels": _FALLBACK_TEXT_MODELS,
-            "audioModels": _FALLBACK_AUDIO_MODELS,
-            "defaultTextModel": OPENAI_MODEL,
-            "defaultAudioModel": "gpt-4o-mini-tts",
-            "source": "fallback",
-        }
+        raise HTTPException(
+            status_code=400,
+            detail="Add an OpenAI API key before testing models.",
+        )
 
+    client = api_key_service.get_openai_client_for_user(user["id"])
+
+    # --- Text model: single-token completion, cheapest possible call ---
+    text_ok = False
+    text_error: Optional[str] = None
     try:
-        client = api_key_service.get_openai_client_for_user(user["id"])
-        all_models = client.models.list()
-        model_ids = sorted(
-            (m.id for m in all_models.data),
-            key=lambda x: x.lower(),
+        client.chat.completions.create(
+            model=payload.text_model.strip(),
+            messages=[{"role": "user", "content": "Hi"}],
+            max_tokens=1,
         )
+        text_ok = True
     except Exception as exc:
-        logger.warning("Failed to fetch OpenAI model list: %s", exc)
-        # Fallback rather than hard error so the UI remains usable.
-        return {
-            "textModels": _FALLBACK_TEXT_MODELS,
-            "audioModels": _FALLBACK_AUDIO_MODELS,
-            "defaultTextModel": OPENAI_MODEL,
-            "defaultAudioModel": "gpt-4o-mini-tts",
-            "source": "fallback",
-        }
+        text_error = _extract_openai_error(exc)
 
-    def _is_text_model(mid: str) -> bool:
-        m = mid.lower()
-        return any(m.startswith(inc) or inc in m for inc in _TEXT_INCLUDE) and not any(
-            exc in m for exc in _TEXT_EXCLUDE
+    # --- Audio model: shortest possible TTS input ---
+    audio_ok = False
+    audio_error: Optional[str] = None
+    try:
+        import tempfile, os as _os
+
+        resp = client.audio.speech.create(
+            model=payload.audio_model.strip(),
+            voice="alloy",
+            input=".",
+            response_format="mp3",
         )
-
-    def _is_audio_model(mid: str) -> bool:
-        m = mid.lower()
-        return any(inc in m for inc in _AUDIO_INCLUDE)
-
-    text_models = [m for m in model_ids if _is_text_model(m)]
-    audio_models = [m for m in model_ids if _is_audio_model(m)]
-
-    # Ensure fallback models appear even if OpenAI doesn't list them yet.
-    for m in _FALLBACK_TEXT_MODELS:
-        if m not in text_models:
-            text_models.insert(0, m)
-    for m in _FALLBACK_AUDIO_MODELS:
-        if m not in audio_models:
-            audio_models.insert(0, m)
+        # Read and immediately discard — we only care if it didn't error.
+        _ = resp.content
+        audio_ok = True
+    except Exception as exc:
+        audio_error = _extract_openai_error(exc)
 
     return {
-        "textModels": text_models,
-        "audioModels": audio_models,
-        "defaultTextModel": OPENAI_MODEL,
-        "defaultAudioModel": "gpt-4o-mini-tts",
-        "source": "live",
+        "textModel": {"ok": text_ok, "error": text_error},
+        "audioModel": {"ok": audio_ok, "error": audio_error},
     }
+
+
+def _extract_openai_error(exc: Exception) -> str:
+    """Pull the most useful message out of an OpenAI (or generic) exception."""
+    # openai SDK wraps errors in APIStatusError / APIConnectionError etc.
+    msg = getattr(exc, "message", None) or str(exc)
+    # Trim long stack traces that sometimes appear in the message
+    return msg.split("\n")[0][:200]
 
 
 @router.put("/models")
