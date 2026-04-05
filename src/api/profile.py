@@ -194,6 +194,7 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
         client.chat.completions.create(
             model=_model,
             messages=[{"role": "user", "content": "Hi"}],
+            max_completion_tokens=10,
         )
         text_ok = True
     except Exception as exc:
