@@ -595,8 +595,7 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
-                       d.tag_mode,
-                       d.tag_multi
+                       d.tag_mode
                 FROM cards c
                 JOIN decks d ON d.id = c.deck_id
                 WHERE c.owner_id = %s AND c.card_group_id = %s
@@ -615,7 +614,6 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
         "field_schema": deck_service.normalize_field_schema(rows[0]["field_schema"]),
         "prompt_templates": rows[0]["prompt_templates"],
         "tag_mode": rows[0].get("tag_mode", "off"),
-        "tag_multi": rows[0].get("tag_multi", True),
     }
     payload = rows[0]["payload"]
     audio_bytes = None

@@ -24,6 +24,7 @@ class TagCreateRequest(BaseModel):
     category: str = ""
     color: str = "#6366f1"
     sort_order: int = 0
+    category_exclusive: bool = False
 
 
 class TagUpdateRequest(BaseModel):
@@ -31,6 +32,7 @@ class TagUpdateRequest(BaseModel):
     category: Optional[str] = None
     color: Optional[str] = None
     sort_order: Optional[int] = None
+    category_exclusive: Optional[bool] = None
 
 
 class BulkTagCreateRequest(BaseModel):
@@ -43,10 +45,6 @@ class SetCardTagsRequest(BaseModel):
 
 class TagModeRequest(BaseModel):
     mode: str  # 'off' | 'manual' | 'auto'
-
-
-class TagMultiRequest(BaseModel):
-    multi: bool
 
 
 # ---------------------------------------------------------------------------
@@ -64,7 +62,6 @@ def list_deck_tags(deck_id: str, user=Depends(get_current_user)):
     return {
         "tags": tags,
         "tag_mode": deck.get("tag_mode", "off"),
-        "tag_multi": deck.get("tag_multi", True),
     }
 
 
@@ -82,6 +79,7 @@ def create_deck_tag(
             category=body.category,
             color=body.color,
             sort_order=body.sort_order,
+            category_exclusive=body.category_exclusive,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -124,17 +122,6 @@ def set_deck_tag_mode(
     return {"tag_mode": mode}
 
 
-@router.put("/decks/{deck_id}/tag-multi")
-def set_deck_tag_multi(
-    deck_id: str, body: TagMultiRequest, user=Depends(get_current_user)
-):
-    deck_uuid = parse_uuid(deck_id, entity="Deck")
-    if not deck_service.get_deck(deck_uuid, user["id"]):
-        raise HTTPException(status_code=404, detail="Deck not found.")
-    deck_service.set_deck_tag_multi(deck_uuid, user["id"], body.multi)
-    return {"tag_multi": body.multi}
-
-
 @router.patch("/{tag_id}")
 def update_tag(tag_id: str, body: TagUpdateRequest, user=Depends(get_current_user)):
     tag_uuid = parse_uuid(tag_id, entity="Tag")
@@ -149,6 +136,7 @@ def update_tag(tag_id: str, body: TagUpdateRequest, user=Depends(get_current_use
         category=body.category,
         color=body.color,
         sort_order=body.sort_order,
+        category_exclusive=body.category_exclusive,
     )
     if not updated:
         raise HTTPException(status_code=404, detail="Tag not found.")

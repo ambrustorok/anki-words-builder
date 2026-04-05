@@ -14,7 +14,6 @@ interface DeckCardsResponse {
     pages: number;
     deckTags?: DeckTag[];
     tagMode?: TagMode;
-    tagMulti?: boolean;
     isFiltered?: boolean;
 }
 
@@ -65,13 +64,19 @@ export function DeckCardsPage() {
         refetch();
     };
 
-    const tagMulti = data?.tagMulti !== false;
-
     const toggleTagFilter = (tagName: string) => {
+        const tag = (data?.deckTags ?? []).find((t) => t.name === tagName);
         setActiveTagNames((prev) => {
-            if (!tagMulti) {
-                // Single-select: clicking active tag clears it, clicking another replaces
-                return prev.has(tagName) ? new Set() : new Set([tagName]);
+            if (tag?.category_exclusive) {
+                // Single-select within this category
+                const siblings = new Set(
+                    (data?.deckTags ?? [])
+                        .filter((t) => t.category === tag.category)
+                        .map((t) => t.name)
+                );
+                const next = new Set([...prev].filter((n) => !siblings.has(n)));
+                if (!prev.has(tagName)) next.add(tagName);
+                return next;
             }
             const next = new Set(prev);
             if (next.has(tagName)) next.delete(tagName);

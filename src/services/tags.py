@@ -17,17 +17,19 @@ def _uuid(value) -> str:
 DEFAULT_TAG_PRESETS = [
     {
         "category": "CEFR",
+        "exclusive": True,
         "tags": [
-            {"name": "A1", "color": "#86efac"},  # green-300
-            {"name": "A2", "color": "#4ade80"},  # green-400
-            {"name": "B1", "color": "#fde047"},  # yellow-300
-            {"name": "B2", "color": "#fb923c"},  # orange-400
-            {"name": "C1", "color": "#f97316"},  # orange-500
-            {"name": "C2", "color": "#ef4444"},  # red-500
+            {"name": "A1", "color": "#86efac"},
+            {"name": "A2", "color": "#4ade80"},
+            {"name": "B1", "color": "#fde047"},
+            {"name": "B2", "color": "#fb923c"},
+            {"name": "C1", "color": "#f97316"},
+            {"name": "C2", "color": "#ef4444"},
         ],
     },
     {
         "category": "Topic",
+        "exclusive": False,
         "tags": [
             {"name": "politics", "color": "#a78bfa"},
             {"name": "free_time", "color": "#34d399"},
@@ -50,7 +52,7 @@ def list_deck_tags(deck_id: uuid.UUID) -> List[dict]:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT id, deck_id, name, category, color, sort_order, created_at
+                SELECT id, deck_id, name, category, color, sort_order, category_exclusive, created_at
                 FROM deck_tags
                 WHERE deck_id = %s
                 ORDER BY category, sort_order, name
@@ -68,9 +70,9 @@ def create_tag(
     category: str = "",
     color: str = "#6366f1",
     sort_order: int = 0,
+    category_exclusive: bool = False,
 ) -> dict:
     tag_id = uuid.uuid4()
-    # Sanitize: Anki tags cannot have spaces — replace with underscore
     safe_name = name.strip().replace(" ", "_")
     if not safe_name:
         raise ValueError("Tag name cannot be empty.")
@@ -78,10 +80,10 @@ def create_tag(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO deck_tags (id, deck_id, name, category, color, sort_order)
-                VALUES (%s, %s, %s, %s, %s, %s)
+                INSERT INTO deck_tags (id, deck_id, name, category, color, sort_order, category_exclusive)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT (deck_id, name) DO NOTHING
-                RETURNING id, deck_id, name, category, color, sort_order, created_at
+                RETURNING id, deck_id, name, category, color, sort_order, category_exclusive, created_at
                 """,
                 (
                     _uuid(tag_id),
@@ -90,6 +92,7 @@ def create_tag(
                     category.strip(),
                     color.strip() or "#6366f1",
                     sort_order,
+                    category_exclusive,
                 ),
             )
             row = cur.fetchone()
@@ -110,6 +113,7 @@ def bulk_create_tags(deck_id: uuid.UUID, tags: List[dict]) -> List[dict]:
                 category=tag.get("category", ""),
                 color=tag.get("color", "#6366f1"),
                 sort_order=tag.get("sort_order", 0),
+                category_exclusive=bool(tag.get("category_exclusive", False)),
             )
             created.append(result)
         except ValueError:
@@ -125,6 +129,7 @@ def update_tag(
     category: Optional[str] = None,
     color: Optional[str] = None,
     sort_order: Optional[int] = None,
+    category_exclusive: Optional[bool] = None,
 ) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -149,15 +154,18 @@ def update_tag(
             if sort_order is not None:
                 updates.append("sort_order = %s")
                 params.append(sort_order)
+            if category_exclusive is not None:
+                updates.append("category_exclusive = %s")
+                params.append(category_exclusive)
             if not updates:
                 cur.execute(
-                    "SELECT id, deck_id, name, category, color, sort_order, created_at FROM deck_tags WHERE id = %s",
+                    "SELECT id, deck_id, name, category, color, sort_order, category_exclusive, created_at FROM deck_tags WHERE id = %s",
                     (_uuid(tag_id),),
                 )
                 return dict(cur.fetchone())
             params.append(_uuid(tag_id))
             cur.execute(
-                f"UPDATE deck_tags SET {', '.join(updates)} WHERE id = %s RETURNING id, deck_id, name, category, color, sort_order, created_at",
+                f"UPDATE deck_tags SET {', '.join(updates)} WHERE id = %s RETURNING id, deck_id, name, category, color, sort_order, category_exclusive, created_at",
                 params,
             )
             row = cur.fetchone()
@@ -188,7 +196,7 @@ def get_card_group_tags(card_group_id: uuid.UUID) -> List[dict]:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT dt.id, dt.name, dt.category, dt.color, dt.sort_order
+                SELECT dt.id, dt.name, dt.category, dt.color, dt.sort_order, dt.category_exclusive
                 FROM card_tags ct
                 JOIN deck_tags dt ON dt.id = ct.tag_id
                 WHERE ct.card_group_id = %s
@@ -218,7 +226,7 @@ def set_card_group_tags(
                     )
             cur.execute(
                 """
-                SELECT dt.id, dt.name, dt.category, dt.color, dt.sort_order
+                SELECT dt.id, dt.name, dt.category, dt.color, dt.sort_order, dt.category_exclusive
                 FROM card_tags ct
                 JOIN deck_tags dt ON dt.id = ct.tag_id
                 WHERE ct.card_group_id = %s
@@ -240,11 +248,11 @@ def get_tags_for_card_groups(card_group_ids: List[str]) -> dict:
             placeholders = ",".join(["%s"] * len(card_group_ids))
             cur.execute(
                 f"""
-                SELECT ct.card_group_id, dt.id, dt.name, dt.category, dt.color, dt.sort_order
-                FROM card_tags ct
-                JOIN deck_tags dt ON dt.id = ct.tag_id
-                WHERE ct.card_group_id IN ({placeholders})
-                ORDER BY dt.category, dt.sort_order, dt.name
+                 SELECT ct.card_group_id, dt.id, dt.name, dt.category, dt.color, dt.sort_order, dt.category_exclusive
+                 FROM card_tags ct
+                 JOIN deck_tags dt ON dt.id = ct.tag_id
+                 WHERE ct.card_group_id IN ({placeholders})
+                 ORDER BY dt.category, dt.sort_order, dt.name
                 """,
                 [str(gid) for gid in card_group_ids],
             )
@@ -259,6 +267,7 @@ def get_tags_for_card_groups(card_group_ids: List[str]) -> dict:
                 "category": row["category"],
                 "color": row["color"],
                 "sort_order": row["sort_order"],
+                "category_exclusive": bool(row["category_exclusive"]),
             }
         )
     return result

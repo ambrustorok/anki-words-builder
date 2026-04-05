@@ -282,7 +282,7 @@ def create_deck(
                 """
                 INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, tag_multi, created_at, updated_at, anki_id
+                RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at, anki_id
                 """,
                 (
                     _uuid(deck_id),
@@ -318,7 +318,7 @@ def list_decks(owner_id: uuid.UUID) -> List[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
-                       d.tag_multi,
+
                        d.created_at,
                        d.updated_at,
                        GREATEST(
@@ -353,7 +353,7 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
-                       d.tag_multi,
+
                        d.created_at,
                        d.updated_at,
                        COALESCE(COUNT(c.id), 0) AS card_count,
@@ -389,7 +389,7 @@ def list_least_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
-                       d.tag_multi,
+
                        d.created_at,
                        d.updated_at,
                        GREATEST(
@@ -425,7 +425,7 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
-                       d.tag_multi,
+
                        d.created_at,
                        d.updated_at
                 FROM decks d
@@ -454,7 +454,7 @@ def get_deck_by_anki_id(owner_id: uuid.UUID, anki_id: uuid.UUID) -> Optional[dic
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
-                       d.tag_multi,
+
                        d.created_at,
                        d.updated_at
                 FROM decks d
@@ -495,7 +495,7 @@ def apply_backup_metadata(
                     prompt_templates = %s,
                     updated_at = NOW()
                 WHERE id = %s AND owner_id = %s
-                RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, tag_mode, tag_multi, created_at, updated_at
+                RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                 """,
                 (
                     name.strip(),
@@ -568,7 +568,7 @@ def update_deck(
                         prompt_templates = %s,
                         updated_at = NOW()
                     WHERE id = %s AND owner_id = %s
-                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, tag_multi, created_at, updated_at
+                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                     """,
                     (
                         name.strip(),
@@ -588,7 +588,7 @@ def update_deck(
                         field_schema = %s,
                         updated_at = NOW()
                     WHERE id = %s AND owner_id = %s
-                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, tag_multi, created_at, updated_at
+                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                     """,
                     (
                         name.strip(),
@@ -655,12 +655,3 @@ def set_deck_tag_mode(deck_id: uuid.UUID, owner_id: uuid.UUID, mode: str) -> Non
             )
         conn.commit()
 
-
-def set_deck_tag_multi(deck_id: uuid.UUID, owner_id: uuid.UUID, multi: bool) -> None:
-    with get_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "UPDATE decks SET tag_multi = %s, updated_at = NOW() WHERE id = %s AND owner_id = %s",
-                (multi, _uuid(deck_id), _uuid(owner_id)),
-            )
-        conn.commit()

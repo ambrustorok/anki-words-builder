@@ -18,6 +18,7 @@ export interface DeckTag {
   category: string;
   color: string;
   sort_order: number;
+  category_exclusive?: boolean;
   created_at?: string;
 }
 
@@ -27,6 +28,7 @@ export type TagMode = "off" | "manual" | "auto";
 /** A preset category returned from the API */
 export interface TagPresetCategory {
   category: string;
+  exclusive?: boolean;
   tags: { name: string; color: string }[];
 }
 
@@ -79,5 +81,4 @@ export interface DeckDetailResponse {
   lastModified?: string;
   generationPrompts: Record<string, unknown>;
   tagMode?: TagMode;
-  tagMulti?: boolean;
 }

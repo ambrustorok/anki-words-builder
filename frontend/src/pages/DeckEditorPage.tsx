@@ -237,24 +237,14 @@ export function DeckEditorPage({ mode }: Props) {
   // Tag management handlers (only active in edit mode — deck must exist first)
   // ---------------------------------------------------------------------------
 
-  const handleTagModeChange = async (nextMode: TagMode) => {
+  const handleTagModeChange = (nextMode: TagMode) => {
     setTagMode(nextMode);
-    if (!deckId) return;
-    try {
-      await apiFetch(`/tags/decks/${deckId}/tag-mode`, { method: "PUT", json: { mode: nextMode } });
-    } catch {
-      // non-critical
-    }
+    // Saved on form submit, not immediately
   };
 
-  const handleTagMultiChange = async (next: boolean) => {
+  const handleTagMultiChange = (next: boolean) => {
     setTagMulti(next);
-    if (!deckId) return;
-    try {
-      await apiFetch(`/tags/decks/${deckId}/tag-multi`, { method: "PUT", json: { multi: next } });
-    } catch {
-      // non-critical
-    }
+    // Saved on form submit, not immediately
   };
 
   const handleLoadPresets = async () => {
@@ -273,7 +263,12 @@ export function DeckEditorPage({ mode }: Props) {
     if (!deckId) return;
     setTagError("");
     try {
-      const tags = preset.tags.map((t, i) => ({ ...t, category: preset.category, sort_order: i }));
+      const tags = preset.tags.map((t, i) => ({
+        ...t,
+        category: preset.category,
+        sort_order: i,
+        category_exclusive: preset.exclusive ?? false,
+      }));
       const resp = await apiFetch<{ tags: DeckTag[] }>(`/tags/decks/${deckId}/tags/bulk`, {
         method: "POST",
         json: { tags },
@@ -328,6 +323,20 @@ export function DeckEditorPage({ mode }: Props) {
     } catch {}
   };
 
+  const handleToggleCategoryExclusive = async (category: string, exclusive: boolean) => {
+    // Update local state immediately for all tags in this category
+    setDeckTags((prev) =>
+      prev.map((t) => (t.category === category ? { ...t, category_exclusive: exclusive } : t))
+    );
+    // Persist each tag in this category
+    const tagsInCategory = deckTags.filter((t) => t.category === category);
+    for (const tag of tagsInCategory) {
+      try {
+        await apiFetch(`/tags/${tag.id}`, { method: "PATCH", json: { category_exclusive: exclusive } });
+      } catch {}
+    }
+  };
+
   // Grouped tags by category for display
   const tagsByCategory = deckTags.reduce<Record<string, DeckTag[]>>((acc, tag) => {
     const cat = tag.category || "Uncategorized";
@@ -347,7 +356,8 @@ export function DeckEditorPage({ mode }: Props) {
         audioInstructions,
         audioEnabled,
         generationPrompts: generationPromptsPayload,
-        cardTemplates: cardTemplates
+        cardTemplates: cardTemplates,
+        tagMode,
       };
       if (mode === "create") {
         const response = await apiFetch<{ deck: { id: string } }>("/decks", {
@@ -567,28 +577,29 @@ export function DeckEditorPage({ mode }: Props) {
               {tagMode === "manual"
                 ? "Tags are shown on the card form. You assign them manually when creating or editing cards."
                 : "Tags are suggested automatically by AI when you process a card, and you can accept or reject each suggestion."}
-            <label className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-              <input
-                type="checkbox"
-                checked={tagMulti}
-                onChange={(e) => handleTagMultiChange(e.target.checked)}
-                className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
-              />
-              Allow multiple tags per card
-              <span className="text-slate-400 dark:text-slate-500">
-                {tagMulti ? "(current: multiple — click to allow one tag at a time)" : "(current: one — click to allow multiple tags)"}
-              </span>
-            </label>
             </p>
 
             {/* Existing tags grouped by category */}
             {Object.keys(tagsByCategory).length > 0 && (
               <div className="mt-4 space-y-4">
-                {Object.entries(tagsByCategory).map(([category, tags]) => (
+                {Object.entries(tagsByCategory).map(([category, tags]) => {
+                  const isExclusive = tags[0]?.category_exclusive ?? false;
+                  return (
                   <div key={category}>
-                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                      {category}
-                    </p>
+                    <div className="mb-2 flex items-center gap-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                        {category}
+                      </p>
+                      <label className="flex items-center gap-1.5 text-xs text-slate-400 dark:text-slate-500 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          checked={isExclusive}
+                          onChange={(e) => handleToggleCategoryExclusive(category, e.target.checked)}
+                          className="h-3.5 w-3.5 rounded border-slate-300 text-brand focus:ring-brand"
+                        />
+                        Single-select
+                      </label>
+                    </div>
                     <div className="flex flex-wrap gap-2">
                       {tags.map((tag) => (
                         <div
@@ -629,8 +640,9 @@ export function DeckEditorPage({ mode }: Props) {
                         </div>
                       ))}
                     </div>
-                  </div>
-                ))}
+                    </div>
+                  );
+                })}
               </div>
             )}
 

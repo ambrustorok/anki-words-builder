@@ -222,9 +222,9 @@ def init_db():
             cur.execute(
                 "ALTER TABLE decks ADD COLUMN IF NOT EXISTS tag_mode TEXT NOT NULL DEFAULT 'off'"
             )
-            # Whether multiple tags can be selected simultaneously (default true)
+            # Whether tags within the same category are mutually exclusive (radio-button behaviour)
             cur.execute(
-                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS tag_multi BOOLEAN NOT NULL DEFAULT TRUE"
+                "ALTER TABLE deck_tags ADD COLUMN IF NOT EXISTS category_exclusive BOOLEAN NOT NULL DEFAULT FALSE"
             )
 
             # App-level settings
