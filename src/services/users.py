@@ -24,7 +24,9 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT u.id, u.native_language, u.created_at, u.is_admin, ue.email AS primary_email
+                SELECT u.id, u.native_language, u.created_at, u.is_admin,
+                       u.text_model, u.audio_model,
+                       ue.email AS primary_email
                 FROM user_emails ue
                 JOIN users u ON u.id = ue.user_id
                 WHERE LOWER(ue.email) = %s
@@ -38,6 +40,8 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
                     "native_language": row["native_language"],
                     "primary_email": row["primary_email"],
                     "is_admin": row["is_admin"],
+                    "text_model": row.get("text_model"),
+                    "audio_model": row.get("audio_model"),
                 }
                 should_be_admin = normalized_email in auto_admin
                 if should_be_admin and not row["is_admin"]:
@@ -72,6 +76,8 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
                 "native_language": None,
                 "primary_email": normalized_email,
                 "is_admin": is_admin,
+                "text_model": None,
+                "audio_model": None,
             }
 
 
@@ -90,7 +96,9 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT u.id, u.native_language, u.is_admin, ue.email AS primary_email
+                SELECT u.id, u.native_language, u.is_admin,
+                       u.text_model, u.audio_model,
+                       ue.email AS primary_email
                 FROM users u
                 LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = TRUE
                 WHERE u.id = %s
@@ -105,7 +113,29 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
                 "native_language": row["native_language"],
                 "primary_email": row.get("primary_email"),
                 "is_admin": row["is_admin"],
+                "text_model": row.get("text_model"),
+                "audio_model": row.get("audio_model"),
             }
+
+
+def set_user_models(
+    user_id: uuid.UUID,
+    *,
+    text_model: Optional[str] = None,
+    audio_model: Optional[str] = None,
+) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                UPDATE users
+                SET text_model  = COALESCE(%s, text_model),
+                    audio_model = COALESCE(%s, audio_model)
+                WHERE id = %s
+                """,
+                (text_model or None, audio_model or None, _uuid(user_id)),
+            )
+        conn.commit()
 
 
 def list_user_emails(user_id: uuid.UUID) -> List[dict]:

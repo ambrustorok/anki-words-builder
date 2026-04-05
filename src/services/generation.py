@@ -58,11 +58,14 @@ def _format_prompt(
 
 
 def _run_completion(
-    client: OpenAI, prompt_cfg: Dict[str, str], context: Dict[str, str]
+    client: OpenAI,
+    prompt_cfg: Dict[str, str],
+    context: Dict[str, str],
+    model: Optional[str] = None,
 ) -> str:
     prompts = _format_prompt(prompt_cfg, context)
     response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=model or OPENAI_MODEL,
         temperature=0.2,
         messages=[
             {"role": "system", "content": prompts["system"]},
@@ -93,24 +96,33 @@ def _strip_quotes(text: str) -> str:
 
 
 def generate_translation(
-    client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]
+    client: OpenAI,
+    prompts: Dict[str, Dict[str, str]],
+    context: Dict[str, str],
+    model: Optional[str] = None,
 ) -> str:
     prompt_cfg = prompts.get("translation") or DEFAULT_PROMPTS["translation"]
-    return _strip_quotes(_run_completion(client, prompt_cfg, context))
+    return _strip_quotes(_run_completion(client, prompt_cfg, context, model=model))
 
 
 def generate_dictionary(
-    client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]
+    client: OpenAI,
+    prompts: Dict[str, Dict[str, str]],
+    context: Dict[str, str],
+    model: Optional[str] = None,
 ) -> str:
     prompt_cfg = prompts.get("dictionary") or DEFAULT_PROMPTS["dictionary"]
-    return _run_completion(client, prompt_cfg, context)
+    return _run_completion(client, prompt_cfg, context, model=model)
 
 
 def generate_sentence(
-    client: OpenAI, prompts: Dict[str, Dict[str, str]], context: Dict[str, str]
+    client: OpenAI,
+    prompts: Dict[str, Dict[str, str]],
+    context: Dict[str, str],
+    model: Optional[str] = None,
 ) -> str:
     prompt_cfg = prompts.get("sentence") or DEFAULT_PROMPTS["sentence"]
-    return _run_completion(client, prompt_cfg, context)
+    return _run_completion(client, prompt_cfg, context, model=model)
 
 
 def generate_foreign_from_native(
@@ -119,6 +131,7 @@ def generate_foreign_from_native(
     native_phrase: str,
     native_language: str,
     target_language: str,
+    model: Optional[str] = None,
 ) -> str:
     prompt_cfg = (
         prompts.get("reverse_translation") or DEFAULT_PROMPTS["reverse_translation"]
@@ -132,7 +145,7 @@ def generate_foreign_from_native(
         target_language=target_language,
     )
     response = client.chat.completions.create(
-        model=OPENAI_MODEL,
+        model=model or OPENAI_MODEL,
         temperature=0.2,
         messages=[
             {
@@ -161,6 +174,7 @@ def enrich_payload(
     native_language: str,
     generation_prompts: Dict[str, Dict[str, str]],
     field_schema: Optional[List[dict]] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, str]:
     foreign_phrase = payload.get(foreign_phrase_key, "").strip()
     if not foreign_phrase:
@@ -176,14 +190,14 @@ def enrich_payload(
         "native_phrase"
     ):
         payload["native_phrase"] = generate_translation(
-            client, generation_prompts, context
+            client, generation_prompts, context, model=model
         )
 
     if _can_generate_field(field_schema, "dictionary_entry") and not payload.get(
         "dictionary_entry"
     ):
         payload["dictionary_entry"] = generate_dictionary(
-            client, generation_prompts, context
+            client, generation_prompts, context, model=model
         )
 
     if _can_generate_field(field_schema, "example_sentence") and not payload.get(
@@ -191,7 +205,7 @@ def enrich_payload(
     ):
         if _should_generate_sentence(foreign_phrase):
             payload["example_sentence"] = generate_sentence(
-                client, generation_prompts, context
+                client, generation_prompts, context, model=model
             )
         else:
             payload["example_sentence"] = foreign_phrase
@@ -208,6 +222,7 @@ def regenerate_field(
     native_language: str,
     generation_prompts: Dict[str, Dict[str, str]],
     field_schema: Optional[List[dict]] = None,
+    model: Optional[str] = None,
 ) -> Dict[str, str]:
     context = {
         "foreign_phrase": payload.get(foreign_phrase_key, "").strip(),
@@ -222,15 +237,15 @@ def regenerate_field(
 
     if field == "native_phrase":
         payload["native_phrase"] = generate_translation(
-            client, generation_prompts, context
+            client, generation_prompts, context, model=model
         )
     elif field == "dictionary_entry":
         payload["dictionary_entry"] = generate_dictionary(
-            client, generation_prompts, context
+            client, generation_prompts, context, model=model
         )
     elif field == "example_sentence":
         payload["example_sentence"] = generate_sentence(
-            client, generation_prompts, context
+            client, generation_prompts, context, model=model
         )
     else:
         raise ValueError("Unsupported field regeneration.")
@@ -315,6 +330,7 @@ def generate_audio_for_phrase(
     *,
     voice: str = "random",
     instructions: str = "",
+    audio_model: Optional[str] = None,
 ) -> Optional[bytes]:
     if not text.strip():
         return None
@@ -323,4 +339,5 @@ def generate_audio_for_phrase(
         text.strip(),
         voice=voice,
         instructions=instructions,
+        model=audio_model,
     )

@@ -369,6 +369,10 @@ async def _handle_action(
         seed_field_key = foreign_field_key
         seed_label = "foreign phrase"
 
+    # Per-user model preferences (fall back to env default if not set)
+    user_text_model: Optional[str] = user.get("text_model") or None
+    user_audio_model: Optional[str] = user.get("audio_model") or None
+
     generation_allowed = api_key_service.user_can_generate(user["id"])
     client = (
         api_key_service.get_openai_client_for_user(user["id"])
@@ -405,6 +409,7 @@ async def _handle_action(
                     payload.get(seed_field_key, ""),
                     native_language,
                     deck["target_language"],
+                    model=user_text_model,
                 )
             )
         except Exception as exc:
@@ -462,6 +467,7 @@ async def _handle_action(
                 native_language,
                 generation_prompts,
                 deck.get("field_schema"),
+                model=user_text_model,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -485,6 +491,7 @@ async def _handle_action(
                 native_language,
                 generation_prompts,
                 deck.get("field_schema"),
+                model=user_text_model,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -508,6 +515,7 @@ async def _handle_action(
                 native_language,
                 generation_prompts,
                 deck.get("field_schema"),
+                model=user_text_model,
             )
         except Exception as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -532,6 +540,7 @@ async def _handle_action(
                 payload.get(foreign_field_key, ""),
                 voice=audio_preferences["voice"],
                 instructions=audio_preferences["instructions"],
+                audio_model=user_audio_model,
             )
             audio_preview_b64 = _encode_audio_preview(audio_bytes)
         except Exception as exc:
@@ -557,6 +566,7 @@ async def _handle_action(
                 native_language,
                 generation_prompts,
                 deck.get("field_schema"),
+                model=user_text_model,
             )
         except Exception as exc:
             raise HTTPException(
@@ -569,6 +579,7 @@ async def _handle_action(
                     payload.get(foreign_field_key, ""),
                     voice=audio_preferences["voice"],
                     instructions=audio_preferences["instructions"],
+                    audio_model=user_audio_model,
                 )
                 audio_preview_b64 = _encode_audio_preview(audio_bytes)
             except Exception as exc:
@@ -609,6 +620,7 @@ async def _handle_action(
                     native_language,
                     generation_prompts,
                     deck.get("field_schema"),
+                    model=user_text_model,
                 )
             except Exception as exc:
                 raise HTTPException(
@@ -621,6 +633,7 @@ async def _handle_action(
                         payload.get(foreign_field_key, ""),
                         voice=audio_preferences["voice"],
                         instructions=audio_preferences["instructions"],
+                        audio_model=user_audio_model,
                     )
                     audio_preview_b64 = _encode_audio_preview(audio_bytes)
                 except Exception as exc:

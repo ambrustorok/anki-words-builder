@@ -18,7 +18,10 @@ VOICES = [
     "shimmer",
 ]
 
-DEFAULT_INSTRUCTIONS = "Speak clearly and slowly so that a language learner can mimic the pronunciation."
+DEFAULT_INSTRUCTIONS = (
+    "Speak clearly and slowly so that a language learner can mimic the pronunciation."
+)
+DEFAULT_AUDIO_MODEL = "gpt-4o-mini-tts"
 
 
 def _pick_voice(preferred: str) -> str:
@@ -34,6 +37,7 @@ def generate_audio_binary(
     *,
     voice: str = "random",
     instructions: str = "",
+    model: Optional[str] = None,
 ) -> Optional[bytes]:
     spoken_text = text.strip()
     if not spoken_text:
@@ -41,13 +45,14 @@ def generate_audio_binary(
 
     selected_voice = _pick_voice(voice)
     prompt = instructions.strip() or DEFAULT_INSTRUCTIONS
+    audio_model = model or DEFAULT_AUDIO_MODEL
     temp_file = tempfile.NamedTemporaryFile(delete=False, suffix=".mp3")
     temp_path = temp_file.name
     temp_file.close()
     audio_bytes: Optional[bytes] = None
     try:
         with openai_client.audio.speech.with_streaming_response.create(
-            model="gpt-4o-mini-tts",
+            model=audio_model,
             voice=selected_voice,
             input=spoken_text,
             response_format="mp3",
