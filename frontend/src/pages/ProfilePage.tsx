@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
@@ -11,10 +11,19 @@ interface ProfileResponse {
     nativeLanguage?: string;
     primaryEmail?: string;
     isAdmin: boolean;
+    textModel?: string;
+    audioModel?: string;
   };
   emails: { id: string; email: string; is_primary: boolean }[];
   apiKey: { has_key: boolean; masked?: string };
   nativeLanguageOptions: string[];
+}
+
+interface AvailableModelsResponse {
+  textModels: string[];
+  audioModels: string[];
+  defaultTextModel: string;
+  defaultAudioModel: string;
 }
 
 export function ProfilePage() {
@@ -27,16 +36,29 @@ export function ProfilePage() {
   const [message, setMessage] = useState("");
   const [errMsg, setErrMsg] = useState("");
 
-  if (isLoading) {
-    return <LoadingScreen label="Loading profile" />;
-  }
-  if (error) {
-    return <p className="text-red-500">Failed to load profile: {(error as Error).message}</p>;
-  }
+  // Model prefs state
+  const [textModel, setTextModel] = useState("");
+  const [audioModel, setAudioModel] = useState("");
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [availableModels, setAvailableModels] = useState<AvailableModelsResponse | null>(null);
+  const [modelsSaved, setModelsSaved] = useState(false);
+  const [modelsErr, setModelsErr] = useState("");
+
+  // Seed model dropdowns from profile
+  useEffect(() => {
+    if (data?.user) {
+      setTextModel(data.user.textModel ?? "");
+      setAudioModel(data.user.audioModel ?? "");
+    }
+  }, [data?.user]);
+
+  if (isLoading) return <LoadingScreen label="Loading profile" />;
+  if (error) return <p className="text-red-500">Failed to load profile: {(error as Error).message}</p>;
+
   const emails = data?.emails ?? [];
   const user = data?.user;
   const nativeLanguage = user?.nativeLanguage || "Not set";
-  const primaryEmail = emails.find((email) => email.is_primary)?.email || user?.primaryEmail || "—";
+  const primaryEmail = emails.find((e) => e.is_primary)?.email || user?.primaryEmail || "—";
   const hasApiKey = Boolean(data?.apiKey?.has_key);
   const logoutHref = getCloudflareLogoutUrl();
 
@@ -68,13 +90,10 @@ export function ProfilePage() {
     event.preventDefault();
     setErrMsg("");
     try {
-      await apiFetch("/profile/emails", {
-        method: "POST",
-        json: { email: newEmail, makePrimary: false }
-      });
+      await apiFetch("/profile/emails", { method: "POST", json: { email: newEmail, makePrimary: false } });
       setNewEmail("");
       refetch();
-      setMessage("Email added. You can set it as primary below.");
+      setMessage("Email added.");
     } catch (err) {
       setErrMsg((err as Error).message);
     }
@@ -107,123 +126,253 @@ export function ProfilePage() {
     window.location.href = response.logoutUrl ?? getCloudflareLogoutUrl();
   };
 
-  return (
-    <div className="space-y-6">
-      {message && <p className="rounded-lg bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100">{message}</p>}
-      {errMsg && <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">{errMsg}</p>}
+  const loadAvailableModels = async () => {
+    setModelsLoading(true);
+    setModelsErr("");
+    try {
+      const resp = await apiFetch<AvailableModelsResponse>("/profile/models/available");
+      setAvailableModels(resp);
+    } catch (err) {
+      setModelsErr((err as Error).message);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+  const saveModelPrefs = async () => {
+    setModelsErr("");
+    setModelsSaved(false);
+    try {
+      await apiFetch("/profile/models", {
+        method: "PUT",
+        json: {
+          textModel: textModel || null,
+          audioModel: audioModel || null,
+        },
+      });
+      refetch();
+      setModelsSaved(true);
+      setTimeout(() => setModelsSaved(false), 3000);
+    } catch (err) {
+      setModelsErr((err as Error).message);
+    }
+  };
+
+  const activeTextModel = textModel || availableModels?.defaultTextModel || "gpt-4o-mini";
+  const activeAudioModel = audioModel || availableModels?.defaultAudioModel || "gpt-4o-mini-tts";
+
+  return (
+    <div className="space-y-5">
+      {message && (
+        <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100">
+          {message}
+        </p>
+      )}
+      {errMsg && (
+        <p className="rounded-xl bg-red-50 px-4 py-3 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
+          {errMsg}
+        </p>
+      )}
+
+      {/* Profile summary */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-semibold text-slate-900 dark:text-white">Profile</h1>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Review your account details and API access.</p>
+            <p className="text-sm text-slate-500 dark:text-slate-400">{primaryEmail}</p>
           </div>
           <a
-            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400 dark:border-slate-600 dark:text-slate-200"
+            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 dark:border-slate-600 dark:text-slate-200"
             href={logoutHref}
           >
             Log out
           </a>
         </div>
-        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Native language</p>
-            <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">{nativeLanguage}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Set during onboarding</p>
+        <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 text-sm">
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Language</p>
+            <p className="mt-1 font-semibold text-slate-900 dark:text-white">{nativeLanguage}</p>
           </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Primary email</p>
-            <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">{primaryEmail}</p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">Used for notifications</p>
-          </div>
-          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 dark:border-slate-800 dark:bg-slate-900/60">
-            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">API key</p>
-            <p className="mt-1 text-base font-semibold text-slate-900 dark:text-white">
-              {hasApiKey ? `On file (${data?.apiKey?.masked ?? "••••"})` : "Using server default"}
+          <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">API key</p>
+            <p className="mt-1 font-semibold text-slate-900 dark:text-white">
+              {hasApiKey ? data?.apiKey?.masked ?? "On file" : "Not set"}
             </p>
-            <p className="text-xs text-slate-500 dark:text-slate-400">{hasApiKey ? "Custom key stored securely" : "Add your own to control usage"}</p>
+          </div>
+          <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
+            <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Text model</p>
+            <p className="mt-1 font-semibold text-slate-900 dark:text-white truncate">{activeTextModel}</p>
           </div>
         </div>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+      {/* OpenAI API key */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">OpenAI API key</h2>
-            <p className="text-sm text-slate-500 dark:text-slate-400">Provide your own key to control billing and rate limits.</p>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">OpenAI API key</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Your own key for billing control.</p>
           </div>
           {hasApiKey && (
-            <span className="inline-flex items-center rounded-full border border-emerald-300/60 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-100">
-              Key on file
+            <span className="rounded-full border border-emerald-300/60 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-100">
+              On file
             </span>
           )}
         </div>
-        <form className="mt-4 flex flex-col gap-3 md:flex-row" onSubmit={handleApiKey}>
+        <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={handleApiKey}>
           <input
-            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
-            placeholder={hasApiKey ? "Update key" : "sk-..."}
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"
+            placeholder={hasApiKey ? "Replace key" : "sk-..."}
             value={apiKey}
-            onChange={(event) => setApiKey(event.target.value)}
+            onChange={(e) => setApiKey(e.target.value)}
           />
-          <button type="submit" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900">
+          <button type="submit" className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px]">
             Save key
           </button>
           {hasApiKey && (
             <button
               type="button"
               onClick={removeApiKey}
-              className="rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 dark:border-red-400/40"
+              className="rounded-full border border-red-200 px-5 py-2.5 text-sm font-semibold text-red-600 min-h-[44px] dark:border-red-400/40"
             >
-              Delete key
+              Remove
             </button>
           )}
         </form>
       </section>
 
-      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Emails</h2>
-        <ul className="mt-4 divide-y divide-slate-100 text-sm dark:divide-slate-800">
+      {/* Model selection */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">AI Models</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Choose which OpenAI models to use for text and audio generation.
+            </p>
+          </div>
+          {!availableModels && (
+            <button
+              type="button"
+              onClick={loadAvailableModels}
+              disabled={modelsLoading || !hasApiKey}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 min-h-[44px]"
+              title={!hasApiKey ? "Add an API key first" : undefined}
+            >
+              {modelsLoading ? "Loading…" : "Load models"}
+            </button>
+          )}
+        </div>
+
+        {modelsErr && (
+          <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
+            {modelsErr}
+          </p>
+        )}
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          {/* Text model */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Text model
+            </label>
+            {availableModels ? (
+              <select
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                value={textModel || availableModels.defaultTextModel}
+                onChange={(e) => setTextModel(e.target.value)}
+              >
+                {availableModels.textModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/60">
+                {user?.textModel || availableModels?.defaultTextModel || "gpt-4o-mini (default)"}
+              </div>
+            )}
+          </div>
+
+          {/* Audio model */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Audio model
+            </label>
+            {availableModels ? (
+              <select
+                className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                value={audioModel || availableModels.defaultAudioModel}
+                onChange={(e) => setAudioModel(e.target.value)}
+              >
+                {availableModels.audioModels.map((m) => (
+                  <option key={m} value={m}>{m}</option>
+                ))}
+              </select>
+            ) : (
+              <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-900/60">
+                {user?.audioModel || "gpt-4o-mini-tts (default)"}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {availableModels && (
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              type="button"
+              onClick={saveModelPrefs}
+              className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px]"
+            >
+              Save model preferences
+            </button>
+            {modelsSaved && (
+              <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* Emails */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <h2 className="text-base font-semibold text-slate-900 dark:text-white">Email addresses</h2>
+        <ul className="mt-3 divide-y divide-slate-100 text-sm dark:divide-slate-800">
           {emails.map((email) => (
-            <li key={email.id} className="flex items-center justify-between py-3">
+            <li key={email.id} className="flex items-center justify-between py-3 gap-2">
               <div>
                 <p className="font-medium text-slate-900 dark:text-white">{email.email}</p>
-                {email.is_primary && <span className="text-xs text-slate-500 dark:text-slate-400">Primary</span>}
+                {email.is_primary && <span className="text-xs text-slate-400 dark:text-slate-500">Primary</span>}
               </div>
-              <div className="flex gap-2 text-xs">
+              <div className="flex gap-3 text-xs shrink-0">
                 {!email.is_primary && (
-                  <button className="text-brand" onClick={() => setPrimaryEmail(email.id)}>
-                    Make primary
-                  </button>
+                  <button className="text-brand" onClick={() => setPrimaryEmail(email.id)}>Make primary</button>
                 )}
                 {!email.is_primary && (
-                  <button className="text-red-500" onClick={() => deleteEmail(email.id)}>
-                    Delete
-                  </button>
+                  <button className="text-red-500" onClick={() => deleteEmail(email.id)}>Remove</button>
                 )}
               </div>
             </li>
           ))}
         </ul>
-        <form className="mt-4 flex flex-col gap-3 md:flex-row" onSubmit={addEmail}>
+        <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={addEmail}>
           <input
-            className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900"
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900"
             placeholder="new@example.com"
             value={newEmail}
-            onChange={(event) => setNewEmail(event.target.value)}
+            onChange={(e) => setNewEmail(e.target.value)}
           />
-          <button type="submit" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900">
+          <button type="submit" className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px]">
             Add email
           </button>
         </form>
       </section>
 
-      <section className="rounded-3xl border border-red-200 bg-red-50 p-6 shadow-sm dark:border-red-400/50 dark:bg-red-500/10">
-        <h2 className="text-lg font-semibold text-red-900 dark:text-red-200">Danger zone</h2>
-        <p className="text-sm text-red-800 dark:text-red-200">Delete all decks, cards, and linked emails.</p>
+      {/* Danger zone */}
+      <section className="rounded-3xl border border-red-200 bg-red-50 p-5 shadow-sm dark:border-red-400/50 dark:bg-red-500/10">
+        <h2 className="text-base font-semibold text-red-900 dark:text-red-200">Danger zone</h2>
+        <p className="mt-1 text-sm text-red-800 dark:text-red-300">Permanently delete your account and all decks.</p>
         <button
           type="button"
           onClick={deleteAccount}
-          className="mt-4 rounded-full border border-red-400 px-4 py-2 text-sm font-semibold text-red-700 dark:border-red-300 dark:text-red-100"
+          className="mt-4 rounded-full border border-red-400 px-5 py-2.5 text-sm font-semibold text-red-700 min-h-[44px] dark:border-red-300 dark:text-red-100"
         >
           Delete account
         </button>
