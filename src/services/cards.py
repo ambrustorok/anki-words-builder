@@ -475,7 +475,7 @@ def list_cards_for_deck_paginated(
         if grid in group_map:
             ordered_groups.append(group_map[grid])
 
-    _attach_tags_to_groups(ordered_groups)
+    ordered_groups = _attach_tags_to_groups(ordered_groups)
 
     import math
 
