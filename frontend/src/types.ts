@@ -88,6 +88,7 @@ export interface GenerationCandidate {
   suggested_tag_ids: string[];
   is_duplicate: boolean;
   is_possible_duplicate: boolean;
+  audio_b64?: string | null;    // base64 mp3, generated during preview
   // UI state (not from API)
   accepted: boolean;
   editing: boolean;
