@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -10,6 +10,32 @@ import type {
   GenerationCandidate,
   GenerationPreviewResponse,
 } from "../types";
+
+// ---------------------------------------------------------------------------
+// localStorage persistence helpers
+// ---------------------------------------------------------------------------
+
+interface PersistedPrefs {
+  cardType: "word" | "sentence";
+  selectedByCategory: Record<string, string[]>; // Set serialised as array
+  cardsPerCell: number;
+  directions: string[];
+}
+
+function loadPrefs(deckId: string): Partial<PersistedPrefs> {
+  try {
+    const raw = localStorage.getItem(`generate-prefs:${deckId}`);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
+}
+
+function savePrefs(deckId: string, prefs: PersistedPrefs) {
+  try {
+    localStorage.setItem(`generate-prefs:${deckId}`, JSON.stringify(prefs));
+  } catch {}
+}
 
 interface DeckTagsResponse {
   tags: DeckTag[];
@@ -73,13 +99,31 @@ export function GenerateCardsPage() {
   const exclusiveCats = allTags.filter((t) => t.category_exclusive);
   const exclusiveCatNames = [...new Set(exclusiveCats.map((t) => t.category))];
 
-  // ---- Form state ----
-  const [cardType, setCardType] = useState<"word" | "sentence">("word");
+  // ---- Form state (seeded from localStorage) ----
+  const prefs = deckId ? loadPrefs(deckId) : {};
+  const [cardType, setCardType] = useState<"word" | "sentence">(prefs.cardType ?? "word");
   const [description, setDescription] = useState("");
-  // {category: Set<tagId>}
-  const [selectedByCategory, setSelectedByCategory] = useState<Record<string, Set<string>>>({});
-  const [cardsPerCell, setCardsPerCell] = useState(2);
-  const [directions, setDirections] = useState<string[]>(["forward", "backward"]);
+  // {category: Set<tagId>} — restored from serialised arrays
+  const [selectedByCategory, setSelectedByCategory] = useState<Record<string, Set<string>>>(
+    () => Object.fromEntries(
+      Object.entries(prefs.selectedByCategory ?? {}).map(([cat, ids]) => [cat, new Set(ids)])
+    )
+  );
+  const [cardsPerCell, setCardsPerCell] = useState(prefs.cardsPerCell ?? 2);
+  const [directions, setDirections] = useState<string[]>(prefs.directions ?? ["forward", "backward"]);
+
+  // Persist prefs whenever they change
+  useEffect(() => {
+    if (!deckId) return;
+    savePrefs(deckId, {
+      cardType,
+      selectedByCategory: Object.fromEntries(
+        Object.entries(selectedByCategory).map(([cat, ids]) => [cat, [...ids]])
+      ),
+      cardsPerCell,
+      directions,
+    });
+  }, [deckId, cardType, selectedByCategory, cardsPerCell, directions]);
 
   // ---- Generation state ----
   const [generating, setGenerating] = useState(false);
