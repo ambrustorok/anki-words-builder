@@ -8,6 +8,7 @@ from ..services import api_keys as api_key_service
 from ..services import bulk_generation as bulk_gen
 from ..services import cards as card_service
 from ..services import decks as deck_service
+from ..services import generation as generation_service
 from ..services import tags as tag_service
 from .dependencies import get_current_user, parse_uuid
 
@@ -236,19 +237,59 @@ def save(body: SaveRequest, user=Depends(get_current_user)):
     if not directions:
         raise HTTPException(status_code=400, detail="Select at least one direction.")
 
+    # Audio setup — same logic as normal card save
+    audio_allowed = deck_service.is_audio_enabled(deck)
+    client = None
+    audio_voice = "random"
+    audio_instructions = deck_service.get_audio_instructions(deck) or ""
+    audio_model = user.get("audio_model") or None
+    if audio_allowed and api_key_service.user_can_generate(user["id"]):
+        try:
+            client = api_key_service.get_openai_client_for_user(user["id"])
+        except Exception:
+            audio_allowed = False
+
+    # Resolve the foreign phrase field key (first required field in schema)
+    foreign_field_key = "foreign_phrase"
+    schema = deck.get("field_schema") or []
+    for field in schema:
+        if field.get("required"):
+            foreign_field_key = field["key"]
+            break
+
     saved = 0
     group_ids: List[str] = []
 
     for card in body.cards:
         try:
+            payload = dict(card.payload)
+
+            # Generate audio for the foreign phrase if enabled
+            audio_bytes = None
+            if audio_allowed and client:
+                phrase = payload.get(foreign_field_key, "").strip()
+                if phrase:
+                    try:
+                        audio_bytes = generation_service.generate_audio_for_phrase(
+                            client,
+                            phrase,
+                            voice=audio_voice,
+                            instructions=audio_instructions,
+                            audio_model=audio_model,
+                        )
+                    except Exception:
+                        pass  # audio failure is non-critical
+
             group_id = card_service.create_cards(
                 user["id"],
                 deck,
-                dict(card.payload),
+                payload,
                 directions,
                 native_language,
+                audio_bytes=audio_bytes,
             )
             group_ids.append(str(group_id))
+
             # Save tag assignments
             if card.tag_ids:
                 valid_uuids = []
