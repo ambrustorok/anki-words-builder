@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 from openai import OpenAI
 
 from ..chatgpt_tools.tts import generate_audio_binary
+from ..settings import OPENAI_MODEL
 
 DEFAULT_PROMPTS = {
     "translation": {
@@ -47,7 +48,7 @@ def _run_completion(
 ) -> str:
     prompts = _format_prompt(prompt_cfg, context)
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENAI_MODEL,
         temperature=0.2,
         messages=[
             {"role": "system", "content": prompts["system"]},
@@ -271,7 +272,7 @@ def infer_tags(
 
     try:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model=OPENAI_MODEL,
             temperature=0.1,
             messages=[
                 {"role": "system", "content": system_prompt},

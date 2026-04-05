@@ -553,41 +553,52 @@ def update_deck(
                     merged = _apply_card_template_overrides(merged, card_templates)
                 prompts = merged
 
-            cur.execute(
-                """
-                UPDATE decks
-                SET name = %s,
-                    target_language = %s,
-                    field_schema = %s,
-                    updated_at = NOW()
-                WHERE id = %s AND owner_id = %s
-                RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
-                """,
-                (
-                    name.strip(),
-                    target_language.strip(),
-                    Json(schema),
-                    _uuid(deck_id),
-                    _uuid(owner_id),
-                ),
-            )
+            if prompts is not None:
+                cur.execute(
+                    """
+                    UPDATE decks
+                    SET name = %s,
+                        target_language = %s,
+                        field_schema = %s,
+                        prompt_templates = %s,
+                        updated_at = NOW()
+                    WHERE id = %s AND owner_id = %s
+                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
+                    """,
+                    (
+                        name.strip(),
+                        target_language.strip(),
+                        Json(schema),
+                        Json(prompts),
+                        _uuid(deck_id),
+                        _uuid(owner_id),
+                    ),
+                )
+            else:
+                cur.execute(
+                    """
+                    UPDATE decks
+                    SET name = %s,
+                        target_language = %s,
+                        field_schema = %s,
+                        updated_at = NOW()
+                    WHERE id = %s AND owner_id = %s
+                    RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
+                    """,
+                    (
+                        name.strip(),
+                        target_language.strip(),
+                        Json(schema),
+                        _uuid(deck_id),
+                        _uuid(owner_id),
+                    ),
+                )
             updated = cur.fetchone()
             if not updated:
                 return None
             updated["field_schema"] = normalize_field_schema(
                 updated.get("field_schema")
             )
-            if prompts is not None:
-                cur.execute(
-                    """
-                    UPDATE decks
-                    SET prompt_templates = %s,
-                        updated_at = NOW()
-                    WHERE id = %s AND owner_id = %s
-                    """,
-                    (Json(prompts), _uuid(deck_id), _uuid(owner_id)),
-                )
-                updated["prompt_templates"] = prompts
         conn.commit()
     return updated
 

@@ -29,4 +29,4 @@ POSTGRES_USER = os.getenv("POSTGRES_USER", "postgres")
 POSTGRES_PASSWORD = os.getenv("POSTGRES_PASSWORD", "postgres")
 POSTGRES_PORT = os.getenv("POSTGRES_PORT", "7654")
 
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt5-5.1-chat-latest")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")

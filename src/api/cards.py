@@ -1,6 +1,9 @@
 import base64
 import io
+import logging
 from typing import Dict, List, Literal, Optional
+
+logger = logging.getLogger(__name__)
 
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -63,7 +66,7 @@ class CardActionRequest(BaseModel):
 
 
 def _save_card_tags(group_id, tag_ids: List[str]) -> None:
-    """Save tag assignments for a card group. Silently skips invalid UUIDs."""
+    """Save tag assignments for a card group. Logs errors but does not fail the save."""
     import uuid as _uuid_mod
 
     valid_uuids = []
@@ -75,7 +78,7 @@ def _save_card_tags(group_id, tag_ids: List[str]) -> None:
     try:
         tag_service.set_card_group_tags(group_id, valid_uuids)
     except Exception:
-        pass  # tags are non-critical — don't fail the save
+        logger.exception("Failed to save tag assignments for group %s", group_id)
 
 
 def _encode_audio_preview(audio_bytes: Optional[bytes]) -> str:
