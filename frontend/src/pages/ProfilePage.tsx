@@ -24,6 +24,7 @@ interface AvailableModelsResponse {
   audioModels: string[];
   defaultTextModel: string;
   defaultAudioModel: string;
+  source?: "live" | "fallback";
 }
 
 export function ProfilePage() {
@@ -254,9 +255,8 @@ export function ProfilePage() {
             <button
               type="button"
               onClick={loadAvailableModels}
-              disabled={modelsLoading || !hasApiKey}
+              disabled={modelsLoading}
               className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 min-h-[44px]"
-              title={!hasApiKey ? "Add an API key first" : undefined}
             >
               {modelsLoading ? "Loading…" : "Load models"}
             </button>
@@ -316,18 +316,30 @@ export function ProfilePage() {
         </div>
 
         {availableModels && (
-          <div className="mt-4 flex items-center gap-3">
-            <button
-              type="button"
-              onClick={saveModelPrefs}
-              className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px]"
-            >
-              Save model preferences
-            </button>
-            {modelsSaved && (
-              <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
+          <>
+            {availableModels.source === "fallback" && (
+              <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                Showing a curated list. Add an API key to load all models available on your account.
+              </p>
             )}
-          </div>
+            {availableModels.source === "live" && (
+              <p className="mt-3 text-xs text-slate-400 dark:text-slate-500">
+                Models filtered by ID pattern — the OpenAI API does not expose capability types.
+              </p>
+            )}
+            <div className="mt-4 flex items-center gap-3">
+              <button
+                type="button"
+                onClick={saveModelPrefs}
+                className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px]"
+              >
+                Save preferences
+              </button>
+              {modelsSaved && (
+                <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
+              )}
+            </div>
+          </>
         )}
       </section>
 

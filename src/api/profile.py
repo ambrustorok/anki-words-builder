@@ -15,11 +15,46 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/profile")
 
-_AUDIO_MODEL_HINTS = ("tts",)
-_EXCLUDE_HINTS = (
-    "tts", "realtime", "transcribe", "whisper",
-    "dall", "embedding", "search", "audio-preview",
+# The OpenAI /models endpoint returns only: id, created, object, owned_by.
+# There is no capability/type field, so we classify by ID pattern.
+
+# A model ID is an audio/TTS model if its ID contains any of these substrings.
+_AUDIO_INCLUDE = ("tts",)
+
+# A model ID is a usable text/chat model only if it matches at least one include
+# pattern AND none of the exclude patterns.
+_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "chatgpt")
+_TEXT_EXCLUDE = (
+    "tts",
+    "realtime",
+    "transcribe",
+    "whisper",
+    "dall",
+    "dall-e",
+    "embedding",
+    "search",
+    "moderation",
+    "audio",
+    "vision-preview",
+    "instruct",  # old completions-only models
+    "0301",
+    "0314",  # very old snapshots
 )
+
+# Curated fallback shown when no API key is available.
+_FALLBACK_TEXT_MODELS = [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o4-mini",
+    "o3",
+    "o1",
+    "chatgpt-4o-latest",
+]
+_FALLBACK_AUDIO_MODELS = [
+    "gpt-4o-mini-tts",
+    "tts-1",
+    "tts-1-hd",
+]
 
 
 class APIKeyPayload(BaseModel):
@@ -72,11 +107,24 @@ def delete_api_key(user=Depends(get_current_user)):
 
 @router.get("/models/available")
 def available_models(user=Depends(get_current_user)):
+    """
+    Return filtered model lists from OpenAI.
+
+    The OpenAI /models endpoint returns only id, created, object, owned_by —
+    there is no capability or type field. We classify models by ID patterns,
+    which is the only approach the API allows. Falls back to a curated list
+    when no key is configured or the API is unreachable.
+    """
     if not api_key_service.user_can_generate(user["id"]):
-        raise HTTPException(
-            status_code=400,
-            detail="Add an OpenAI API key on your profile before selecting a model.",
-        )
+        # Return curated fallback so the UI is still usable without a key.
+        return {
+            "textModels": _FALLBACK_TEXT_MODELS,
+            "audioModels": _FALLBACK_AUDIO_MODELS,
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": "gpt-4o-mini-tts",
+            "source": "fallback",
+        }
+
     try:
         client = api_key_service.get_openai_client_for_user(user["id"])
         all_models = client.models.list()
@@ -86,25 +134,42 @@ def available_models(user=Depends(get_current_user)):
         )
     except Exception as exc:
         logger.warning("Failed to fetch OpenAI model list: %s", exc)
-        raise HTTPException(
-            status_code=502, detail="Could not retrieve model list from OpenAI."
-        ) from exc
+        # Fallback rather than hard error so the UI remains usable.
+        return {
+            "textModels": _FALLBACK_TEXT_MODELS,
+            "audioModels": _FALLBACK_AUDIO_MODELS,
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": "gpt-4o-mini-tts",
+            "source": "fallback",
+        }
 
-    text_models = [
-        m for m in model_ids
-        if not any(hint in m.lower() for hint in _EXCLUDE_HINTS)
-        and ("gpt" in m.lower() or m.lower().startswith("o1") or m.lower().startswith("o3") or m.lower().startswith("o4"))
-    ]
-    audio_models = [
-        m for m in model_ids
-        if any(hint in m.lower() for hint in _AUDIO_MODEL_HINTS)
-    ]
+    def _is_text_model(mid: str) -> bool:
+        m = mid.lower()
+        return any(m.startswith(inc) or inc in m for inc in _TEXT_INCLUDE) and not any(
+            exc in m for exc in _TEXT_EXCLUDE
+        )
+
+    def _is_audio_model(mid: str) -> bool:
+        m = mid.lower()
+        return any(inc in m for inc in _AUDIO_INCLUDE)
+
+    text_models = [m for m in model_ids if _is_text_model(m)]
+    audio_models = [m for m in model_ids if _is_audio_model(m)]
+
+    # Ensure fallback models appear even if OpenAI doesn't list them yet.
+    for m in _FALLBACK_TEXT_MODELS:
+        if m not in text_models:
+            text_models.insert(0, m)
+    for m in _FALLBACK_AUDIO_MODELS:
+        if m not in audio_models:
+            audio_models.insert(0, m)
 
     return {
         "textModels": text_models,
         "audioModels": audio_models,
         "defaultTextModel": OPENAI_MODEL,
         "defaultAudioModel": "gpt-4o-mini-tts",
+        "source": "live",
     }
 
 
@@ -121,7 +186,9 @@ def set_model_preferences(payload: ModelPrefsPayload, user=Depends(get_current_u
 @router.post("/emails")
 def add_email(payload: EmailPayload, user=Depends(get_current_user)):
     try:
-        user_service.add_user_email(user["id"], payload.email, make_primary=payload.make_primary)
+        user_service.add_user_email(
+            user["id"], payload.email, make_primary=payload.make_primary
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     emails = user_service.list_user_emails(user["id"])
