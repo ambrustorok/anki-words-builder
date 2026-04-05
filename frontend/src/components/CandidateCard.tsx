@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useState } from "react";
 import { GenerationCandidate, DeckTag } from "../types";
 import { SafeHtml } from "./SafeHtml";
 
@@ -10,24 +10,6 @@ interface CandidateCardProps {
 
 export function CandidateCard({ candidate, deckTags, onChange }: CandidateCardProps) {
   const [expanded, setExpanded] = useState(false);
-  const audioRef = useRef<HTMLAudioElement | null>(null);
-  const [playing, setPlaying] = useState(false);
-
-  const audioSrc = candidate.audio_b64
-    ? `data:audio/mpeg;base64,${candidate.audio_b64}`
-    : null;
-
-  const handlePlayPause = () => {
-    if (!audioRef.current) return;
-    if (playing) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
-    } else {
-      audioRef.current.play();
-      setPlaying(true);
-    }
-  };
 
   const toggle = () =>
     onChange(candidate.ephemeral_id, { accepted: !candidate.accepted });
@@ -147,50 +129,14 @@ export function CandidateCard({ candidate, deckTags, onChange }: CandidateCardPr
           )}
         </div>
 
-        <div className="flex shrink-0 gap-1.5">
-          {/* Audio play button */}
-          {audioSrc && (
-            <>
-              <audio
-                ref={audioRef}
-                src={audioSrc}
-                preload="none"
-                onEnded={() => setPlaying(false)}
-              />
-              <button
-                type="button"
-                onClick={handlePlayPause}
-                title={playing ? "Stop" : "Play pronunciation"}
-                className={`flex h-8 w-8 items-center justify-center rounded-lg border transition ${
-                  playing
-                    ? "border-brand bg-brand/10 text-brand"
-                    : "border-slate-200 text-slate-400 hover:border-slate-400 dark:border-slate-700"
-                }`}
-              >
-                {playing ? (
-                  // Stop icon
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                    <rect x="3" y="3" width="10" height="10" rx="1" />
-                  </svg>
-                ) : (
-                  // Play icon
-                  <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="currentColor">
-                    <path d="M5 3.5l8 4.5-8 4.5V3.5z" />
-                  </svg>
-                )}
-              </button>
-            </>
-          )}
-
-          {/* Edit toggle */}
-          <button
-            type="button"
-            onClick={() => setExpanded((e) => !e)}
-            className="rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400"
-          >
-            {expanded ? "Close" : "Edit"}
-          </button>
-        </div>
+        {/* Edit toggle */}
+        <button
+          type="button"
+          onClick={() => setExpanded((e) => !e)}
+          className="shrink-0 rounded-lg border border-slate-200 px-2.5 py-1 text-xs text-slate-500 hover:border-slate-400 dark:border-slate-700 dark:text-slate-400"
+        >
+          {expanded ? "Close" : "Edit"}
+        </button>
       </div>
 
       {/* Expanded edit panel */}

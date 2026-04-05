@@ -1,4 +1,3 @@
-import base64
 import uuid
 from typing import Dict, List, Optional
 
@@ -47,7 +46,6 @@ class PreviewRequest(BaseModel):
 class SaveCard(BaseModel):
     payload: Dict[str, str]
     tag_ids: List[str] = Field(default_factory=list, alias="tagIds")
-    audio_b64: Optional[str] = Field(None, alias="audioB64")  # base64 mp3 from preview
 
 
 class SaveRequest(BaseModel):
@@ -214,40 +212,6 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
         ]
         c.pop("cell_tags", None)
 
-    # ---- Phase 5: generate audio per candidate ----
-    audio_allowed = deck_service.is_audio_enabled(deck)
-    if audio_allowed and all_candidates:
-        audio_instructions = deck_service.get_audio_instructions(deck) or ""
-        # Resolve foreign phrase key
-        foreign_field_key = "foreign_phrase"
-        for field in deck.get("field_schema") or []:
-            if field.get("required"):
-                foreign_field_key = field["key"]
-                break
-
-        for c in all_candidates:
-            phrase = c.get(foreign_field_key) or c.get("foreign_phrase", "")
-            if not phrase.strip():
-                c["audio_b64"] = None
-                continue
-            try:
-                audio_bytes = generation_service.generate_audio_for_phrase(
-                    client,
-                    phrase.strip(),
-                    voice="random",
-                    instructions=audio_instructions,
-                    audio_model=audio_model,
-                )
-                c["audio_b64"] = (
-                    base64.b64encode(audio_bytes).decode() if audio_bytes else None
-                )
-            except Exception:
-                c["audio_b64"] = None
-        step_log.append("Generated audio")
-    else:
-        for c in all_candidates:
-            c["audio_b64"] = None
-
     return {
         "candidates": all_candidates,
         "totalGenerated": len(all_candidates),
@@ -272,6 +236,24 @@ def save(body: SaveRequest, user=Depends(get_current_user)):
     if not directions:
         raise HTTPException(status_code=400, detail="Select at least one direction.")
 
+    # Audio setup — generate for each accepted card at save time
+    audio_allowed = deck_service.is_audio_enabled(deck)
+    audio_client = None
+    audio_instructions = deck_service.get_audio_instructions(deck) or ""
+    audio_model = user.get("audio_model") or None
+    if audio_allowed and api_key_service.user_can_generate(user["id"]):
+        try:
+            audio_client = api_key_service.get_openai_client_for_user(user["id"])
+        except Exception:
+            audio_allowed = False
+
+    # Resolve foreign phrase key from field schema
+    foreign_field_key = "foreign_phrase"
+    for field in deck.get("field_schema") or []:
+        if field.get("required"):
+            foreign_field_key = field["key"]
+            break
+
     saved = 0
     group_ids: List[str] = []
 
@@ -279,13 +261,21 @@ def save(body: SaveRequest, user=Depends(get_current_user)):
         try:
             payload = dict(card.payload)
 
-            # Decode audio from preview (already generated — no new API call needed)
+            # Generate audio for this card's foreign phrase
             audio_bytes = None
-            if card.audio_b64:
-                try:
-                    audio_bytes = base64.b64decode(card.audio_b64)
-                except Exception:
-                    pass
+            if audio_allowed and audio_client:
+                phrase = payload.get(foreign_field_key, "").strip()
+                if phrase:
+                    try:
+                        audio_bytes = generation_service.generate_audio_for_phrase(
+                            audio_client,
+                            phrase,
+                            voice="random",
+                            instructions=audio_instructions,
+                            audio_model=audio_model,
+                        )
+                    except Exception:
+                        pass  # non-critical
 
             group_id = card_service.create_cards(
                 user["id"],

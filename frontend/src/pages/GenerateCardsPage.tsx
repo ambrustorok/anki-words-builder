@@ -39,7 +39,7 @@ function buildCandidates(raw: GenerationPreviewResponse["candidates"]): Generati
     accepted: true,
     editing: false,
     tagIds: [...c.suggested_tag_ids],
-    audio_b64: c.audio_b64 ?? null,
+
     payload: {
       foreign_phrase: c.foreign_phrase,
       native_phrase: c.native_phrase,
@@ -201,7 +201,6 @@ export function GenerateCardsPage() {
           cards: toSave.map((c) => ({
             payload: c.payload,
             tagIds: c.tagIds,
-            audioB64: c.audio_b64 ?? null,
           })),
         },
       });
