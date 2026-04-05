@@ -148,6 +148,8 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
     all_candidates: List[Dict] = []
     step_log: List[str] = []
 
+    schema = deck.get("field_schema") or []
+
     for cell_tags in cells:
         cell_label = (
             " + ".join(t["name"] for t in cell_tags) if cell_tags else "unconstrained"
@@ -160,6 +162,7 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
             description=body.description,
             constraint_tags=cell_tags,
             count=body.cards_per_cell,
+            field_schema=schema,
             model=model,
         )
         # Add ephemeral ID and cell metadata
@@ -174,7 +177,6 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
 
     # ---- Phase 3: batch dictionary ----
     # Only enrich if field schema has dictionary_entry with auto_generate
-    schema = deck.get("field_schema") or []
     needs_dict = any(
         f.get("key") == "dictionary_entry" and f.get("auto_generate", True)
         for f in schema

@@ -23,6 +23,17 @@ from ..settings import OPENAI_MODEL
 # ---------------------------------------------------------------------------
 
 
+def _field_enabled(schema: List[Dict], key: str) -> bool:
+    """Return True if a field key exists in the schema (and is not explicitly disabled)."""
+    if not schema:
+        # No schema defined — assume all standard fields are active
+        return True
+    for field in schema:
+        if field.get("key") == key:
+            return True
+    return False
+
+
 def generate_cell(
     client: OpenAI,
     *,
@@ -32,37 +43,55 @@ def generate_cell(
     description: Optional[str],  # user's free-text topic
     constraint_tags: List[Dict],  # [{name, category}] — exclusive constraints
     count: int,
+    field_schema: Optional[List[Dict]] = None,  # deck field schema
     model: Optional[str] = None,
 ) -> List[Dict]:
     """
     Generate `count` raw candidates for one combination of exclusive constraints.
-    Returns [{foreign_phrase, native_phrase, example_sentence}].
-    Never raises — returns [] on failure.
+    Respects field_schema — only requests fields the deck actually uses.
+    Returns [{foreign_phrase, ...}]. Never raises — returns [] on failure.
     """
     m = model or OPENAI_MODEL
+    schema = field_schema or []
+
+    want_native = _field_enabled(schema, "native_phrase")
+    want_example = _field_enabled(schema, "example_sentence")
 
     # Build constraint description
-    constraint_parts = []
-    for tag in constraint_tags:
-        constraint_parts.append(f"{tag['category']} level {tag['name']}")
+    constraint_parts = [
+        f"{tag['category']} level {tag['name']}" for tag in constraint_tags
+    ]
     constraint_str = ", ".join(constraint_parts) if constraint_parts else "any level"
 
     if card_type == "sentence":
         item_desc = (
             f"complete {target_language} sentences a learner could use in conversation"
         )
-        field_hint = (
-            "foreign_phrase: the full sentence in " + target_language + ", "
-            "native_phrase: its " + native_language + " translation, "
-            "example_sentence: a variant or follow-up sentence"
-        )
     else:
         item_desc = f"{target_language} vocabulary words or short phrases"
-        field_hint = (
-            "foreign_phrase: the word/phrase in " + target_language + ", "
-            "native_phrase: its " + native_language + " translation, "
-            "example_sentence: a short natural sentence using the word"
-        )
+
+    # Build field description only for enabled fields
+    field_parts = [
+        f"foreign_phrase: the {'sentence' if card_type == 'sentence' else 'word/phrase'} in {target_language}"
+    ]
+    if want_native:
+        field_parts.append(f"native_phrase: its {native_language} translation")
+    if want_example:
+        if card_type == "sentence":
+            field_parts.append("example_sentence: a variant or follow-up sentence")
+        else:
+            field_parts.append(
+                "example_sentence: a short natural sentence using the word"
+            )
+    field_hint = ", ".join(field_parts)
+
+    # Build JSON format example
+    format_keys = ["foreign_phrase"]
+    if want_native:
+        format_keys.append("native_phrase")
+    if want_example:
+        format_keys.append("example_sentence")
+    format_example = "{" + ", ".join(f'"{k}":"..."' for k in format_keys) + "}"
 
     topic_line = f'Topic/context: "{description}"' if description else ""
 
@@ -71,7 +100,7 @@ def generate_cell(
         + (topic_line + "\n" if topic_line else "")
         + f"For each item return: {field_hint}.\n"
         "Return ONLY a valid JSON array. No explanation, no markdown.\n"
-        'Format: [{"foreign_phrase":"...","native_phrase":"...","example_sentence":"..."}]'
+        f"Format: [{format_example}]"
     )
 
     try:
@@ -93,6 +122,24 @@ def generate_cell(
         candidates = json.loads(raw)
         if not isinstance(candidates, list):
             return []
+        result = []
+        for item in candidates:
+            if not isinstance(item, dict):
+                continue
+            fp = str(item.get("foreign_phrase", "")).strip()
+            if not fp:
+                continue
+            entry: Dict = {"foreign_phrase": fp}
+            if want_native:
+                entry["native_phrase"] = str(item.get("native_phrase", "")).strip()
+            if want_example:
+                entry["example_sentence"] = str(
+                    item.get("example_sentence", "")
+                ).strip()
+            result.append(entry)
+        return result
+    except Exception:
+        return []
         result = []
         for item in candidates:
             if not isinstance(item, dict):
