@@ -80,7 +80,7 @@ export function Layout({ children }: LayoutProps) {
                 {item.label}
               </NavLink>
             ))}
-            <ThemeToggle />
+            <ThemeToggle variant="icon" />
             {logoutHref && (
               <a
                 className="ml-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
@@ -93,13 +93,12 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      {/* Mobile top bar — app name + theme toggle */}
+      {/* Mobile top bar — app name only (theme is in Profile settings) */}
       <header className="md:hidden border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
-        <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center px-4 py-3">
           <Link to="/" className="text-base font-semibold text-slate-900 dark:text-white">
             Anki Words Builder
           </Link>
-          <ThemeToggle />
         </div>
       </header>
 

@@ -181,14 +181,32 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
     client = api_key_service.get_openai_client_for_user(user["id"])
 
     # --- Text model: single-token completion, cheapest possible call ---
+    # Newer models (gpt-5, o-series) require max_completion_tokens; older ones
+    # use max_tokens. Try the new param first, fall back to the old one.
     text_ok = False
     text_error: Optional[str] = None
     try:
-        client.chat.completions.create(
-            model=payload.text_model.strip(),
-            messages=[{"role": "user", "content": "Hi"}],
-            max_tokens=1,
-        )
+        try:
+            client.chat.completions.create(
+                model=payload.text_model.strip(),
+                messages=[{"role": "user", "content": "Hi"}],
+                max_completion_tokens=1,
+            )
+        except Exception as inner:
+            msg = str(inner).lower()
+            if (
+                "max_completion_tokens" in msg
+                or "unknown field" in msg
+                or "unrecognized" in msg
+            ):
+                # Model doesn't support max_completion_tokens — try legacy param
+                client.chat.completions.create(
+                    model=payload.text_model.strip(),
+                    messages=[{"role": "user", "content": "Hi"}],
+                    max_tokens=1,
+                )
+            else:
+                raise
         text_ok = True
     except Exception as exc:
         text_error = _extract_openai_error(exc)
@@ -197,8 +215,6 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
     audio_ok = False
     audio_error: Optional[str] = None
     try:
-        import tempfile, os as _os
-
         resp = client.audio.speech.create(
             model=payload.audio_model.strip(),
             voice="alloy",

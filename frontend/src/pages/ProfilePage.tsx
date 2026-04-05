@@ -192,7 +192,7 @@ export function ProfilePage() {
   const handleTextModelChange = (v: string) => { setTextModel(v); setTestResult(null); setModelsSaved(false); };
   const handleAudioModelChange = (v: string) => { setAudioModel(v); setTestResult(null); setModelsSaved(false); };
 
-  const bothPassed = testResult?.textModel.ok && testResult?.audioModel.ok;
+
 
   return (
     <div className="space-y-5">
@@ -416,8 +416,7 @@ export function ProfilePage() {
           <button
             type="button"
             onClick={saveModelPrefs}
-            disabled={!bothPassed}
-            title={!bothPassed ? "Test models first" : undefined}
+            disabled={!textModel.trim() || !audioModel.trim()}
             className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-40 min-h-[44px]"
           >
             Save
