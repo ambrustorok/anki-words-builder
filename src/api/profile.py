@@ -17,6 +17,38 @@ router = APIRouter(prefix="/profile")
 
 DEFAULT_AUDIO_MODEL = "gpt-4o-mini-tts"
 
+# Curated list shown when the API can't be reached or returns nothing useful.
+_FALLBACK_TEXT_MODELS = [
+    "gpt-4o",
+    "gpt-4o-mini",
+    "o4-mini",
+    "o3",
+    "o1",
+    "chatgpt-4o-latest",
+]
+_FALLBACK_AUDIO_MODELS = [
+    "gpt-4o-mini-tts",
+    "tts-1",
+    "tts-1-hd",
+]
+
+# ---- ID-pattern classification (best available without capability metadata) ----
+_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "chatgpt")
+_TEXT_EXCLUDE = (
+    "tts",
+    "realtime",
+    "transcribe",
+    "whisper",
+    "dall",
+    "embedding",
+    "search",
+    "moderation",
+    "audio",
+    "instruct",
+    "vision-preview",
+)
+_AUDIO_INCLUDE = ("tts",)
+
 
 class APIKeyPayload(BaseModel):
     api_key: str = Field(..., alias="apiKey")
@@ -69,6 +101,63 @@ def set_api_key(payload: APIKeyPayload, user=Depends(get_current_user)):
 def delete_api_key(user=Depends(get_current_user)):
     api_key_service.delete_user_api_key(user["id"])
     return {"status": "ok"}
+
+
+@router.get("/models/available")
+def available_models(user=Depends(get_current_user)):
+    """
+    Return model lists for the dropdown. Uses the OpenAI /models endpoint
+    when a key is available, falls back to a curated list otherwise.
+    The API returns only id/created/object/owned_by — no capability field —
+    so we classify by ID pattern.
+    """
+
+    def _is_text(mid: str) -> bool:
+        m = mid.lower()
+        return any(m.startswith(i) or i in m for i in _TEXT_INCLUDE) and not any(
+            e in m for e in _TEXT_EXCLUDE
+        )
+
+    def _is_audio(mid: str) -> bool:
+        return any(i in mid.lower() for i in _AUDIO_INCLUDE)
+
+    if not api_key_service.user_can_generate(user["id"]):
+        return {
+            "textModels": _FALLBACK_TEXT_MODELS,
+            "audioModels": _FALLBACK_AUDIO_MODELS,
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+        }
+
+    try:
+        client = api_key_service.get_openai_client_for_user(user["id"])
+        all_ids = sorted((m.id for m in client.models.list().data), key=str.lower)
+    except Exception as exc:
+        logger.warning("Could not fetch model list: %s", exc)
+        return {
+            "textModels": _FALLBACK_TEXT_MODELS,
+            "audioModels": _FALLBACK_AUDIO_MODELS,
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+        }
+
+    text_models = [m for m in all_ids if _is_text(m)]
+    audio_models = [m for m in all_ids if _is_audio(m)]
+
+    # Ensure the curated defaults always appear at the top
+    for m in reversed(_FALLBACK_TEXT_MODELS):
+        if m not in text_models:
+            text_models.insert(0, m)
+    for m in reversed(_FALLBACK_AUDIO_MODELS):
+        if m not in audio_models:
+            audio_models.insert(0, m)
+
+    return {
+        "textModels": text_models,
+        "audioModels": audio_models,
+        "defaultTextModel": OPENAI_MODEL,
+        "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+    }
 
 
 @router.post("/models/test")

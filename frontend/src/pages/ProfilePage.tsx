@@ -19,6 +19,13 @@ interface ProfileResponse {
   nativeLanguageOptions: string[];
 }
 
+interface AvailableModelsResponse {
+  textModels: string[];
+  audioModels: string[];
+  defaultTextModel: string;
+  defaultAudioModel: string;
+}
+
 interface ModelTestResult {
   ok: boolean;
   error?: string | null;
@@ -41,6 +48,8 @@ export function ProfilePage() {
   // Model prefs state
   const [textModel, setTextModel] = useState("");
   const [audioModel, setAudioModel] = useState("");
+  const [availableModels, setAvailableModels] = useState<AvailableModelsResponse | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
   const [testResult, setTestResult] = useState<ModelTestResponse | null>(null);
   const [testing, setTesting] = useState(false);
   const [modelsSaved, setModelsSaved] = useState(false);
@@ -126,6 +135,22 @@ export function ProfilePage() {
     if (!confirmed) return;
     const response = await apiFetch<{ logoutUrl?: string }>("/profile", { method: "DELETE" });
     window.location.href = response.logoutUrl ?? getCloudflareLogoutUrl();
+  };
+
+  const loadAvailableModels = async () => {
+    setModelsLoading(true);
+    setModelsErr("");
+    try {
+      const resp = await apiFetch<AvailableModelsResponse>("/profile/models/available");
+      setAvailableModels(resp);
+      // Seed inputs if user hasn't set a preference yet
+      if (!textModel && resp.defaultTextModel) setTextModel(resp.defaultTextModel);
+      if (!audioModel && resp.defaultAudioModel) setAudioModel(resp.defaultAudioModel);
+    } catch (err) {
+      setModelsErr((err as Error).message);
+    } finally {
+      setModelsLoading(false);
+    }
   };
 
   const testModels = async () => {
@@ -250,10 +275,24 @@ export function ProfilePage() {
 
       {/* Model selection */}
       <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <h2 className="text-base font-semibold text-slate-900 dark:text-white">AI Models</h2>
-        <p className="text-sm text-slate-500 dark:text-slate-400">
-          Enter model IDs from OpenAI. Use Test to verify before saving.
-        </p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">AI Models</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Choose models for text and audio generation. Test before saving.
+            </p>
+          </div>
+          {!availableModels && (
+            <button
+              type="button"
+              onClick={loadAvailableModels}
+              disabled={modelsLoading}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300 min-h-[44px]"
+            >
+              {modelsLoading ? "Loading…" : "Load models"}
+            </button>
+          )}
+        </div>
 
         {modelsErr && (
           <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
@@ -268,23 +307,35 @@ export function ProfilePage() {
               Text model
             </label>
             <div className="relative">
-              <input
-                className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white pr-8 ${
-                  testResult
-                    ? testResult.textModel.ok
-                      ? "border-emerald-400 dark:border-emerald-500"
-                      : "border-red-400 dark:border-red-500"
-                    : "border-slate-200 dark:border-slate-700"
-                }`}
-                value={textModel}
-                onChange={(e) => handleTextModelChange(e.target.value)}
-                placeholder="e.g. gpt-4o-mini"
-                spellCheck={false}
-                autoCorrect="off"
-                autoCapitalize="off"
-              />
+              {availableModels ? (
+                <select
+                  className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white ${
+                    testResult
+                      ? testResult.textModel.ok
+                        ? "border-emerald-400 dark:border-emerald-500"
+                        : "border-red-400 dark:border-red-500"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                  value={textModel}
+                  onChange={(e) => handleTextModelChange(e.target.value)}
+                >
+                  {availableModels.textModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  value={textModel}
+                  onChange={(e) => handleTextModelChange(e.target.value)}
+                  placeholder="e.g. gpt-4o-mini"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
+              )}
               {testResult && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-base">
+                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${testResult.textModel.ok ? "text-emerald-500" : "text-red-500"}`}>
                   {testResult.textModel.ok ? "✓" : "✗"}
                 </span>
               )}
@@ -300,23 +351,35 @@ export function ProfilePage() {
               Audio model
             </label>
             <div className="relative">
-              <input
-                className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white pr-8 ${
-                  testResult
-                    ? testResult.audioModel.ok
-                      ? "border-emerald-400 dark:border-emerald-500"
-                      : "border-red-400 dark:border-red-500"
-                    : "border-slate-200 dark:border-slate-700"
-                }`}
-                value={audioModel}
-                onChange={(e) => handleAudioModelChange(e.target.value)}
-                placeholder="e.g. gpt-4o-mini-tts"
-                spellCheck={false}
-                autoCorrect="off"
-                autoCapitalize="off"
-              />
+              {availableModels ? (
+                <select
+                  className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white ${
+                    testResult
+                      ? testResult.audioModel.ok
+                        ? "border-emerald-400 dark:border-emerald-500"
+                        : "border-red-400 dark:border-red-500"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                  value={audioModel}
+                  onChange={(e) => handleAudioModelChange(e.target.value)}
+                >
+                  {availableModels.audioModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  value={audioModel}
+                  onChange={(e) => handleAudioModelChange(e.target.value)}
+                  placeholder="e.g. gpt-4o-mini-tts"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
+              )}
               {testResult && (
-                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-base">
+                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${testResult.audioModel.ok ? "text-emerald-500" : "text-red-500"}`}>
                   {testResult.audioModel.ok ? "✓" : "✗"}
                 </span>
               )}
@@ -340,7 +403,7 @@ export function ProfilePage() {
             type="button"
             onClick={saveModelPrefs}
             disabled={!bothPassed}
-            title={!bothPassed ? "Test both models first" : undefined}
+            title={!bothPassed ? "Test models first" : undefined}
             className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-40 min-h-[44px]"
           >
             Save
