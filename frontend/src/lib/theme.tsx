@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState } from "react";
 import { apiFetch } from "./api";
 
 export type ThemePreference = "light" | "dark" | "system";
@@ -22,7 +22,6 @@ function resolveTheme(preference: ThemePreference): ResolvedTheme {
   return preference;
 }
 
-/** Apply / remove the `dark` class on <html> immediately. */
 function applyTheme(resolved: ResolvedTheme) {
   if (resolved === "dark") {
     document.documentElement.classList.add("dark");
@@ -33,13 +32,10 @@ function applyTheme(resolved: ResolvedTheme) {
 
 interface ThemeProviderProps {
   children: React.ReactNode;
-  /** Server-supplied preference — passed in from SessionData once loaded. */
   serverPreference?: ThemePreference;
 }
 
 export function ThemeProvider({ children, serverPreference }: ThemeProviderProps) {
-  // Boot from localStorage first so the page never flashes the wrong colour
-  // while the session loads. Then upgrade to the server value once available.
   const [preference, setPreferenceState] = useState<ThemePreference>(() => {
     try {
       const stored = localStorage.getItem("theme-preference") as ThemePreference | null;
@@ -48,31 +44,28 @@ export function ThemeProvider({ children, serverPreference }: ThemeProviderProps
     return "system";
   });
 
-  // Once the server preference arrives, honour it (and mirror it to localStorage)
+  // Track whether we've done the one-time server sync.
+  // Once synced we never let the server value overwrite local changes.
+  const serverSyncedRef = useRef(false);
+
   useEffect(() => {
     if (!serverPreference) return;
+    if (serverSyncedRef.current) return; // already synced once — user owns it now
+    serverSyncedRef.current = true;
     setPreferenceState(serverPreference);
     try { localStorage.setItem("theme-preference", serverPreference); } catch {}
   }, [serverPreference]);
 
-  const [resolved, setResolved] = useState<ResolvedTheme>(() => resolveTheme(preference));
-
-  // Keep resolved in sync with preference
+  // Apply to DOM whenever preference changes
   useEffect(() => {
-    const r = resolveTheme(preference);
-    setResolved(r);
-    applyTheme(r);
+    applyTheme(resolveTheme(preference));
   }, [preference]);
 
-  // Track system theme changes when preference === 'system'
+  // Track OS-level changes when in system mode
   useEffect(() => {
     if (preference !== "system") return;
     const media = window.matchMedia("(prefers-color-scheme: dark)");
-    const listener = (e: MediaQueryListEvent) => {
-      const r: ResolvedTheme = e.matches ? "dark" : "light";
-      setResolved(r);
-      applyTheme(r);
-    };
+    const listener = () => applyTheme(getSystemTheme());
     media.addEventListener("change", listener);
     return () => media.removeEventListener("change", listener);
   }, [preference]);
@@ -80,9 +73,10 @@ export function ThemeProvider({ children, serverPreference }: ThemeProviderProps
   const setPreference = useCallback((p: ThemePreference) => {
     setPreferenceState(p);
     try { localStorage.setItem("theme-preference", p); } catch {}
-    // Persist to server (fire-and-forget — not critical)
     apiFetch("/profile/theme", { method: "PUT", json: { theme: p } }).catch(() => {});
   }, []);
+
+  const resolved: ResolvedTheme = resolveTheme(preference);
 
   return (
     <ThemeContext.Provider value={{ preference, resolved, setPreference }}>
