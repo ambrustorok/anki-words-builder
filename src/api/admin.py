@@ -1,6 +1,6 @@
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
 from ..services import app_settings as app_settings_service
@@ -34,9 +34,16 @@ class SystemSettingsPayload(BaseModel):
 
 
 @router.get("/users")
-def list_users(user=Depends(require_admin)):
-    users = user_service.list_all_users()
-    return {"users": users, "protectedEmails": list(ALWAYS_ADMIN_EMAILS)}
+def list_users(
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    user=Depends(require_admin),
+):
+    result = user_service.list_all_users(page=page, limit=limit)
+    return {
+        **result,
+        "protectedEmails": list(ALWAYS_ADMIN_EMAILS),
+    }
 
 
 @router.get("/users/{user_id}")

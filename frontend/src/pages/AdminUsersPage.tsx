@@ -9,6 +9,10 @@ import { useSession } from "../lib/session";
 interface AdminUsersResponse {
   users: { id: string; primary_email: string; native_language?: string; is_admin: boolean }[];
   protectedEmails: string[];
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
 }
 
 type GenerationKey = "translation" | "reverse_translation" | "dictionary" | "sentence";
@@ -88,6 +92,8 @@ export function AdminUsersPage() {
   const session = useSession();
   const queryClient = useQueryClient();
   const [promptDraft, setPromptDraft] = useState<PromptTemplates | null>(null);
+  const [page, setPage] = useState(1);
+  const limit = 50;
 
   // System settings
   const [apiBase, setApiBase] = useState("");
@@ -100,9 +106,10 @@ export function AdminUsersPage() {
     isLoading,
     error
   } = useQuery({
-    queryKey: ["admin-users"],
-    queryFn: () => apiFetch<AdminUsersResponse>("/admin/users"),
-    enabled: session.data?.user.isAdmin
+    queryKey: ["admin-users", page],
+    queryFn: () => apiFetch<AdminUsersResponse>(`/admin/users?page=${page}&limit=${limit}`),
+    enabled: session.data?.user.isAdmin,
+    keepPreviousData: true,
   });
 
   const promptQuery = useQuery({
@@ -165,7 +172,7 @@ export function AdminUsersPage() {
     return new Set((data?.protectedEmails ?? []).map((entry) => entry.toLowerCase()));
   }, [data?.protectedEmails]);
 
-  const totalUsers = data?.users?.length ?? 0;
+  const totalUsers = data?.total ?? 0;
   const adminCount = data?.users?.filter((user) => user.is_admin).length ?? 0;
   const promptError = promptQuery.error as Error | null;
 
@@ -259,7 +266,7 @@ export function AdminUsersPage() {
             Create deck
           </Link>
         </div>
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="mt-6 grid gap-4 sm:grid-cols-3">
           <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Total users</p>
             <p className="text-3xl font-semibold text-slate-900 dark:text-white">{totalUsers}</p>
@@ -267,6 +274,12 @@ export function AdminUsersPage() {
           <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-800">
             <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Admins</p>
             <p className="text-3xl font-semibold text-slate-900 dark:text-white">{adminCount}</p>
+          </div>
+          <div className="rounded-2xl border border-slate-100 px-4 py-3 dark:border-slate-800">
+            <p className="text-xs uppercase tracking-wide text-slate-500 dark:text-slate-400">Page</p>
+            <p className="text-3xl font-semibold text-slate-900 dark:text-white">
+              {data ? `${page} / ${data.pages}` : "—"}
+            </p>
           </div>
         </div>
       </section>
@@ -330,6 +343,31 @@ export function AdminUsersPage() {
             </tbody>
           </table>
         </div>
+
+        {/* Pagination */}
+        {data && data.pages > 1 && (
+          <div className="mt-4 flex items-center justify-between text-sm">
+            <span className="text-slate-500 dark:text-slate-400">
+              Showing {(page - 1) * limit + 1}–{Math.min(page * limit, data.total)} of {data.total} users
+            </span>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={page === 1}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
+              >
+                Previous
+              </button>
+              <button
+                onClick={() => setPage((p) => Math.min(data.pages, p + 1))}
+                disabled={page >= data.pages}
+                className="rounded-lg border border-slate-200 px-3 py-1.5 disabled:opacity-40 dark:border-slate-700 dark:text-slate-300"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        )}
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">

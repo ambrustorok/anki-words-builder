@@ -269,9 +269,12 @@ def set_admin_status(user_id: uuid.UUID, is_admin: bool):
         conn.commit()
 
 
-def list_all_users() -> List[dict]:
+def list_all_users(page: int = 1, limit: int = 50) -> dict:
+    offset = (page - 1) * limit
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute("SELECT COUNT(*) AS total FROM users WHERE deleted_at IS NULL")
+            total = cur.fetchone()["total"]
             cur.execute(
                 """
                 SELECT
@@ -283,12 +286,23 @@ def list_all_users() -> List[dict]:
                     COUNT(ue.id) AS email_count
                 FROM users u
                 LEFT JOIN user_emails ue ON ue.user_id = u.id
+                WHERE u.deleted_at IS NULL
                 GROUP BY u.id
                 ORDER BY u.created_at DESC
-                """
+                LIMIT %s OFFSET %s
+                """,
+                (limit, offset),
             )
             rows = cur.fetchall()
-    return rows
+    import math
+
+    return {
+        "users": rows,
+        "total": total,
+        "page": page,
+        "limit": limit,
+        "pages": math.ceil(total / limit) if limit > 0 else 1,
+    }
 
 
 def get_user_by_email(email: str) -> Optional[dict]:
