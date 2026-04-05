@@ -1,6 +1,9 @@
+from typing import Optional
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 
+from ..services import app_settings as app_settings_service
 from ..services import decks as deck_service
 from ..services import users as user_service
 from ..settings import ALWAYS_ADMIN_EMAILS
@@ -24,6 +27,10 @@ class AdminTogglePayload(BaseModel):
 
 class PromptTemplatePayload(BaseModel):
     prompt_templates: dict = Field(..., alias="promptTemplates")
+
+
+class SystemSettingsPayload(BaseModel):
+    openai_api_base: Optional[str] = Field(None, alias="openaiApiBase")
 
 
 @router.get("/users")
@@ -54,18 +61,24 @@ def delete_user(user_id: str, user=Depends(require_admin)):
         raise HTTPException(status_code=404, detail="User not found.")
     primary = (managed.get("primary_email") or "").lower()
     if primary and primary in ALWAYS_ADMIN_EMAILS:
-        raise HTTPException(status_code=400, detail="Cannot delete a protected admin profile.")
+        raise HTTPException(
+            status_code=400, detail="Cannot delete a protected admin profile."
+        )
     user_service.delete_user(user_uuid)
     return {"status": "ok"}
 
 
 @router.post("/users/{user_id}/emails")
-def add_user_email(user_id: str, payload: AdminEmailPayload, user=Depends(require_admin)):
+def add_user_email(
+    user_id: str, payload: AdminEmailPayload, user=Depends(require_admin)
+):
     user_uuid = parse_uuid(user_id, entity="User")
     if not user_service.get_user(user_uuid):
         raise HTTPException(status_code=404, detail="User not found.")
     try:
-        user_service.add_user_email(user_uuid, payload.email, make_primary=payload.make_primary)
+        user_service.add_user_email(
+            user_uuid, payload.email, make_primary=payload.make_primary
+        )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     emails = user_service.list_user_emails(user_uuid)
@@ -115,14 +128,18 @@ def set_primary_email(user_id: str, email_id: str, user=Depends(require_admin)):
 
 
 @router.post("/users/{user_id}/admin")
-def toggle_admin(user_id: str, payload: AdminTogglePayload, user=Depends(require_admin)):
+def toggle_admin(
+    user_id: str, payload: AdminTogglePayload, user=Depends(require_admin)
+):
     user_uuid = parse_uuid(user_id, entity="User")
     managed = user_service.get_user(user_uuid)
     if not managed:
         raise HTTPException(status_code=404, detail="User not found.")
     primary = (managed.get("primary_email") or "").lower()
     if primary and primary in ALWAYS_ADMIN_EMAILS and not payload.make_admin:
-        raise HTTPException(status_code=400, detail="Cannot revoke admin from a protected account.")
+        raise HTTPException(
+            status_code=400, detail="Cannot revoke admin from a protected account."
+        )
     user_service.set_admin_status(user_uuid, payload.make_admin)
     updated = user_service.get_user(user_uuid)
     return {"status": "ok", "user": updated}
@@ -138,3 +155,23 @@ def get_default_prompts(user=Depends(require_admin)):
 def update_default_prompts(payload: PromptTemplatePayload, user=Depends(require_admin)):
     prompts = deck_service.update_default_prompt_templates(payload.prompt_templates)
     return {"promptTemplates": prompts}
+
+
+@router.get("/system-settings")
+def get_system_settings(user=Depends(require_admin)):
+    return {
+        "openaiApiBase": app_settings_service.get_openai_api_base() or "",
+    }
+
+
+@router.put("/system-settings")
+def update_system_settings(payload: SystemSettingsPayload, user=Depends(require_admin)):
+    url = (payload.openai_api_base or "").strip()
+    # Basic validation — must be empty or a plausible URL
+    if url and not url.startswith(("http://", "https://")):
+        raise HTTPException(
+            status_code=400,
+            detail="API base URL must start with http:// or https://, or be empty to use the default.",
+        )
+    app_settings_service.set_openai_api_base(url or None)
+    return {"openaiApiBase": url}

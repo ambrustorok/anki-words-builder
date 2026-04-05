@@ -89,6 +89,12 @@ export function AdminUsersPage() {
   const queryClient = useQueryClient();
   const [promptDraft, setPromptDraft] = useState<PromptTemplates | null>(null);
 
+  // System settings
+  const [apiBase, setApiBase] = useState("");
+  const [apiBaseSaving, setApiBaseSaving] = useState(false);
+  const [apiBaseMsg, setApiBaseMsg] = useState("");
+  const [apiBaseErr, setApiBaseErr] = useState("");
+
   const {
     data,
     isLoading,
@@ -105,11 +111,42 @@ export function AdminUsersPage() {
     enabled: session.data?.user.isAdmin
   });
 
+  const systemSettingsQuery = useQuery({
+    queryKey: ["admin-system-settings"],
+    queryFn: () => apiFetch<{ openaiApiBase: string }>("/admin/system-settings"),
+    enabled: session.data?.user.isAdmin
+  });
+
   useEffect(() => {
     if (promptQuery.data?.promptTemplates) {
       setPromptDraft(normalizePromptTemplates(promptQuery.data.promptTemplates));
     }
   }, [promptQuery.data]);
+
+  useEffect(() => {
+    if (systemSettingsQuery.data !== undefined) {
+      setApiBase(systemSettingsQuery.data.openaiApiBase ?? "");
+    }
+  }, [systemSettingsQuery.data]);
+
+  const saveApiBase = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setApiBaseSaving(true);
+    setApiBaseMsg("");
+    setApiBaseErr("");
+    try {
+      await apiFetch("/admin/system-settings", {
+        method: "PUT",
+        json: { openaiApiBase: apiBase.trim() || null },
+      });
+      setApiBaseMsg(apiBase.trim() ? "API base URL saved." : "Cleared — using OpenAI default.");
+      setTimeout(() => setApiBaseMsg(""), 4000);
+    } catch (err) {
+      setApiBaseErr((err as Error).message);
+    } finally {
+      setApiBaseSaving(false);
+    }
+  };
 
   const savePrompts = useMutation({
     mutationFn: (payload: PromptTemplates) =>
@@ -417,6 +454,64 @@ export function AdminUsersPage() {
                 {savePrompts.isPending ? "Saving…" : "Save default prompts"}
               </button>
             </div>
+          </div>
+        </form>
+      </section>
+
+      {/* System settings */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">System settings</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+          These settings apply to all users system-wide.
+        </p>
+
+        <form className="mt-5 space-y-4" onSubmit={saveApiBase}>
+          <div>
+            <label className="block text-sm font-semibold text-slate-700 dark:text-slate-200 mb-1.5">
+              OpenAI API base URL
+            </label>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+              Override the endpoint for all OpenAI calls — useful for proxies, Azure OpenAI, or
+              compatible APIs (e.g. <code className="rounded bg-slate-100 px-1 dark:bg-slate-800">https://your-proxy.example.com/v1</code>).
+              Leave empty to use the OpenAI default (<code className="rounded bg-slate-100 px-1 dark:bg-slate-800">https://api.openai.com/v1</code>).
+            </p>
+            <input
+              type="url"
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              placeholder="https://api.openai.com/v1"
+              value={apiBase}
+              onChange={(e) => setApiBase(e.target.value)}
+              autoComplete="off"
+              spellCheck={false}
+            />
+          </div>
+
+          {apiBaseErr && (
+            <p className="rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
+              {apiBaseErr}
+            </p>
+          )}
+
+          <div className="flex items-center gap-3">
+            <button
+              type="submit"
+              disabled={apiBaseSaving}
+              className="rounded-full bg-brand px-5 py-2 text-sm font-semibold text-slate-900 disabled:opacity-50"
+            >
+              {apiBaseSaving ? "Saving…" : "Save"}
+            </button>
+            {apiBase && (
+              <button
+                type="button"
+                onClick={() => setApiBase("")}
+                className="text-sm text-slate-500 hover:text-slate-800 dark:text-slate-400"
+              >
+                Clear
+              </button>
+            )}
+            {apiBaseMsg && (
+              <span className="text-sm text-emerald-600 dark:text-emerald-400">{apiBaseMsg}</span>
+            )}
           </div>
         </form>
       </section>

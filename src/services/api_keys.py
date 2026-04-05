@@ -8,6 +8,7 @@ from psycopg2.extras import RealDictCursor
 
 from ..db.core import get_connection
 from ..utils.encryption import decrypt, encrypt
+from . import app_settings as app_settings_service
 
 logger = logging.getLogger(__name__)
 
@@ -99,12 +100,21 @@ def user_can_generate(user_id: uuid.UUID) -> bool:
     return bool(get_user_api_key(user_id)) or has_system_api_key()
 
 
+def _make_client(api_key: str) -> OpenAI:
+    """Build an OpenAI client, injecting the admin-configured base URL if set."""
+    base_url = app_settings_service.get_openai_api_base()
+    kwargs: dict = {"api_key": api_key}
+    if base_url:
+        kwargs["base_url"] = base_url
+    return OpenAI(**kwargs)
+
+
 def get_openai_client_for_user(user_id: uuid.UUID) -> OpenAI:
     user_key = get_user_api_key(user_id)
     if user_key:
-        return OpenAI(api_key=user_key)
+        return _make_client(user_key)
     if SYSTEM_OPENAI_KEY:
-        return OpenAI(api_key=SYSTEM_OPENAI_KEY)
+        return _make_client(SYSTEM_OPENAI_KEY)
     raise MissingAPIKeyError(
         "No OpenAI API key configured. Add one on the profile page."
     )
