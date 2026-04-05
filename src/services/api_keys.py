@@ -1,3 +1,4 @@
+import logging
 import os
 import uuid
 from typing import Optional
@@ -6,6 +7,10 @@ from openai import OpenAI
 from psycopg2.extras import RealDictCursor
 
 from ..db.core import get_connection
+from ..utils.encryption import decrypt, encrypt
+
+logger = logging.getLogger(__name__)
+
 SYSTEM_OPENAI_KEY = os.getenv("OPENAI_API_KEY")
 
 
@@ -29,10 +34,23 @@ def get_user_api_key(user_id: uuid.UUID, provider: str = "openai") -> Optional[s
             row = cur.fetchone()
             if not row:
                 return None
-            return row["key_ciphertext"]
+            raw = row["key_ciphertext"]
+            if not raw:
+                return None
+            try:
+                return decrypt(raw)
+            except ValueError:
+                # Stored value is not encrypted (legacy plaintext) — return as-is
+                # and let the next set_user_api_key call re-encrypt it.
+                logger.warning(
+                    "API key for user %s is stored as plaintext; it will be re-encrypted on next save.",
+                    user_id,
+                )
+                return raw
 
 
 def set_user_api_key(user_id: uuid.UUID, api_key: str, provider: str = "openai"):
+    ciphertext = encrypt(api_key.strip())
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -47,7 +65,7 @@ def set_user_api_key(user_id: uuid.UUID, api_key: str, provider: str = "openai")
                 INSERT INTO user_api_keys (id, user_id, provider, key_ciphertext)
                 VALUES (%s, %s, %s, %s)
                 """,
-                (str(uuid.uuid4()), _uuid(user_id), provider, api_key.strip()),
+                (str(uuid.uuid4()), _uuid(user_id), provider, ciphertext),
             )
         conn.commit()
 
@@ -83,7 +101,9 @@ def get_openai_client_for_user(user_id: uuid.UUID) -> OpenAI:
         return OpenAI(api_key=user_key)
     if SYSTEM_OPENAI_KEY:
         return OpenAI(api_key=SYSTEM_OPENAI_KEY)
-    raise MissingAPIKeyError("No OpenAI API key configured. Add one on the profile page.")
+    raise MissingAPIKeyError(
+        "No OpenAI API key configured. Add one on the profile page."
+    )
 
 
 def get_api_key_summary(user_id: uuid.UUID) -> dict:
