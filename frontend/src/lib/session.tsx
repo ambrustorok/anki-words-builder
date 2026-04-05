@@ -9,6 +9,7 @@ export interface SessionData {
     nativeLanguage?: string | null;
     primaryEmail?: string | null;
     isAdmin: boolean;
+    theme?: "light" | "dark" | "system";
   };
   logoutUrl: string;
   canGenerate: boolean;

@@ -4,7 +4,7 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/Layout";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { SessionProvider, useSession } from "./lib/session";
-import { ThemeProvider } from "./lib/theme";
+import { ThemeProvider, ThemePreference } from "./lib/theme";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -17,6 +17,20 @@ import { DeckCardsPage } from "./pages/DeckCardsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminUserDetailPage } from "./pages/AdminUserDetailPage";
 import { HelpPage } from "./pages/HelpPage";
+
+/** Reads the server theme from session and feeds it into ThemeProvider. */
+function ThemedApp() {
+  const session = useSession();
+  const serverTheme = session.data?.user.theme as ThemePreference | undefined;
+
+  return (
+    <ThemeProvider serverPreference={serverTheme}>
+      <ErrorBoundary>
+        <AppRoutes />
+      </ErrorBoundary>
+    </ThemeProvider>
+  );
+}
 
 function AppRoutes() {
   const session = useSession();
@@ -55,13 +69,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <ErrorBoundary>
-      <ThemeProvider>
-        <SessionProvider>
-          <ErrorBoundary>
-            <AppRoutes />
-          </ErrorBoundary>
-        </SessionProvider>
-      </ThemeProvider>
+      <SessionProvider>
+        <ThemedApp />
+      </SessionProvider>
     </ErrorBoundary>
   );
 }

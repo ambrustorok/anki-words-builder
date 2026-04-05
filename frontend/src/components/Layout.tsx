@@ -2,6 +2,7 @@ import { NavLink, Link, useLocation } from "react-router-dom";
 import { ReactNode } from "react";
 import { useSession } from "../lib/session";
 import { getCloudflareLogoutUrl } from "../lib/logout";
+import { ThemeToggle } from "./ThemeToggle";
 
 interface LayoutProps {
   children: ReactNode;
@@ -79,6 +80,7 @@ export function Layout({ children }: LayoutProps) {
                 {item.label}
               </NavLink>
             ))}
+            <ThemeToggle />
             {logoutHref && (
               <a
                 className="ml-2 rounded-full bg-slate-900 px-3 py-2 text-sm font-semibold text-white dark:bg-white dark:text-slate-900"
@@ -91,20 +93,13 @@ export function Layout({ children }: LayoutProps) {
         </div>
       </header>
 
-      {/* Mobile top bar — app name only */}
+      {/* Mobile top bar — app name + theme toggle */}
       <header className="md:hidden border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex items-center justify-between px-4 py-3">
           <Link to="/" className="text-base font-semibold text-slate-900 dark:text-white">
             Anki Words Builder
           </Link>
-          {logoutHref && (
-            <a
-              className="rounded-full border border-slate-200 px-3 py-1.5 text-xs font-semibold text-slate-600 dark:border-slate-700 dark:text-slate-300"
-              href={logoutHref}
-            >
-              Log out
-            </a>
-          )}
+          <ThemeToggle />
         </div>
       </header>
 

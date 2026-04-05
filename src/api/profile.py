@@ -64,6 +64,10 @@ class ModelPrefsPayload(BaseModel):
     audio_model: Optional[str] = Field(None, alias="audioModel")
 
 
+class ThemePayload(BaseModel):
+    theme: str  # 'light' | 'dark' | 'system'
+
+
 class ModelTestPayload(BaseModel):
     text_model: str = Field(..., alias="textModel")
     audio_model: str = Field(..., alias="audioModel")
@@ -81,6 +85,7 @@ def profile_detail(user=Depends(get_current_user)):
             "isAdmin": bool(fresh_user.get("is_admin")),
             "textModel": fresh_user.get("text_model"),
             "audioModel": fresh_user.get("audio_model"),
+            "theme": fresh_user.get("theme") or "system",
         },
         "emails": emails,
         "apiKey": api_key_service.get_api_key_summary(user["id"]),
@@ -218,6 +223,15 @@ def _extract_openai_error(exc: Exception) -> str:
     msg = getattr(exc, "message", None) or str(exc)
     # Trim long stack traces that sometimes appear in the message
     return msg.split("\n")[0][:200]
+
+
+@router.put("/theme")
+def set_theme(payload: ThemePayload, user=Depends(get_current_user)):
+    try:
+        user_service.set_user_theme(user["id"], payload.theme)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok", "theme": payload.theme}
 
 
 @router.put("/models")

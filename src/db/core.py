@@ -52,6 +52,9 @@ def init_db():
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS text_model TEXT")
             cur.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS audio_model TEXT")
             cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS theme TEXT NOT NULL DEFAULT 'system'"
+            )
+            cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_emails (
                     id UUID PRIMARY KEY,

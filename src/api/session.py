@@ -44,6 +44,7 @@ def session_info(request: Request, user=Depends(get_current_user)):
             "nativeLanguage": fresh_user.get("native_language"),
             "primaryEmail": fresh_user.get("primary_email"),
             "isAdmin": bool(fresh_user.get("is_admin")),
+            "theme": fresh_user.get("theme") or "system",
         },
         "logoutUrl": _build_logout_url(request),
         "canGenerate": api_key_service.user_can_generate(user["id"]),

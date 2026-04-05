@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { getCloudflareLogoutUrl } from "../lib/logout";
+import { ThemeToggle } from "../components/ThemeToggle";
 
 interface ProfileResponse {
   user: {
@@ -271,6 +272,19 @@ export function ProfilePage() {
             </button>
           )}
         </form>
+      </section>
+
+      {/* Theme */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Appearance</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Stored to your account — applies on any device you log in from.
+            </p>
+          </div>
+          <ThemeToggle />
+        </div>
       </section>
 
       {/* Model selection */}
