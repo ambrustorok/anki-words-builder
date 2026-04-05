@@ -1,5 +1,6 @@
 import { Link, useNavigate } from "react-router-dom";
 import { CardGroup, DeckTag } from "../types";
+import { SafeHtml } from "./SafeHtml";
 
 interface CardGroupItemProps {
     group: CardGroup;
@@ -79,14 +80,11 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                         <div className="mt-2 space-y-2 text-sm">
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front</p>
-                                <div
-                                    className="rounded-xl bg-white p-3 dark:bg-slate-800"
-                                    dangerouslySetInnerHTML={{ __html: direction.front }}
-                                />
+                                <SafeHtml html={direction.front} className="rounded-xl bg-white p-3 dark:bg-slate-800" />
                             </div>
                             <div>
                                 <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Back</p>
-                                <div className="rounded-xl bg-white p-3 dark:bg-slate-800" dangerouslySetInnerHTML={{ __html: direction.back }} />
+                                <SafeHtml html={direction.back} className="rounded-xl bg-white p-3 dark:bg-slate-800" />
                             </div>
                         </div>
                     </div>

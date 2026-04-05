@@ -5,6 +5,7 @@ import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { DeckQuickActions } from "../components/DeckQuickActions";
 import type { DeckTag } from "../types";
+import { SafeHtml } from "../components/SafeHtml";
 
 interface DashboardDeck {
   id: string;
@@ -187,17 +188,11 @@ export function DashboardPage() {
                       <>
                         <div>
                           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Front</p>
-                          <div
-                            className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
-                            dangerouslySetInnerHTML={{ __html: displayFace.front }}
-                          />
+                          <SafeHtml html={displayFace.front} className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100" />
                         </div>
                         <div>
                           <p className="text-xs font-semibold text-slate-500 dark:text-slate-400">Back</p>
-                          <div
-                            className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100"
-                            dangerouslySetInnerHTML={{ __html: displayFace.back }}
-                          />
+                          <SafeHtml html={displayFace.back} className="mt-1 rounded-xl bg-white p-3 text-slate-900 dark:bg-slate-800 dark:text-slate-100" />
                         </div>
                       </>
                     )}

@@ -7,9 +7,10 @@ import { LoadingScreen } from "../components/LoadingScreen";
 import { useSession } from "../lib/session";
 import { DeckQuickActions } from "../components/DeckQuickActions";
 import { DeckImportConflictPayload, ImportConflictModal } from "../components/ImportConflictModal";
+import type { Deck } from "../types";
 
 interface DeckListResponse {
-  decks: any[];
+  decks: Deck[];
 }
 
 export function DeckListPage() {

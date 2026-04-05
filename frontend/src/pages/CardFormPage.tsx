@@ -25,6 +25,17 @@ interface CardOptionsResponse {
   defaultAudioInstructions: string;
 }
 
+interface CardActionResponse {
+  status?: "ok" | "saved";
+  message?: string;
+  deckId?: string;
+  cardGroupId?: string;
+  payload?: Record<string, string>;
+  directions?: string[];
+  audioPreview?: string;
+  suggestedTagNames?: string[];
+}
+
 interface Props {
   mode: "create" | "edit";
 }
@@ -266,7 +277,7 @@ export function CardFormPage({ mode }: Props) {
     if (!deckIdForSubmit) return;
     setIsSuggestingTags(true);
     try {
-      const response = await apiFetch<any>("/cards/actions", {
+      const response = await apiFetch<CardActionResponse>("/cards/actions", {
         method: "POST",
         json: {
           deckId: deckIdForSubmit,
@@ -306,7 +317,7 @@ export function CardFormPage({ mode }: Props) {
       setIsProcessing(true);
     }
     try {
-      const response = await apiFetch<any>("/cards/actions", {
+      const response = await apiFetch<CardActionResponse>("/cards/actions", {
         method: "POST",
         json: {
           deckId: deckIdForSubmit,

@@ -19,6 +19,8 @@ export function AdminUserDetailPage() {
   const [email, setEmail] = useState("");
   const [makePrimary, setMakePrimary] = useState(false);
 
+  const [actionError, setActionError] = useState("");
+
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["admin-user", userId],
     queryFn: () => apiFetch<AdminUserDetailResponse>(`/admin/users/${userId}`),
@@ -39,42 +41,73 @@ export function AdminUserDetailPage() {
 
   const addEmail = async (event: FormEvent) => {
     event.preventDefault();
-    await apiFetch(`/admin/users/${userId}/emails`, {
-      method: "POST",
-      json: { email, makePrimary }
-    });
-    setEmail("");
-    setMakePrimary(false);
-    refetch();
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/emails`, {
+        method: "POST",
+        json: { email, makePrimary }
+      });
+      setEmail("");
+      setMakePrimary(false);
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const deleteEmail = async (emailId: string) => {
-    await apiFetch(`/admin/users/${userId}/emails/${emailId}`, { method: "DELETE" });
-    refetch();
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/emails/${emailId}`, { method: "DELETE" });
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const setPrimaryEmail = async (emailId: string) => {
-    await apiFetch(`/admin/users/${userId}/emails/${emailId}/primary`, { method: "POST" });
-    refetch();
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/emails/${emailId}/primary`, { method: "POST" });
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const renameEmail = async (emailId: string, current: string) => {
-    const next = window.prompt("Update email", current);
-    if (!next) return;
-    await apiFetch(`/admin/users/${userId}/emails/${emailId}`, { method: "PATCH", json: { email: next } });
-    refetch();
+    // Use a simple inline form approach instead of window.prompt
+    const next = window.prompt("Update email address:", current);
+    if (!next || next === current) return;
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/emails/${emailId}`, { method: "PATCH", json: { email: next } });
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const toggleAdmin = async (makeAdmin: boolean) => {
-    await apiFetch(`/admin/users/${userId}/admin`, { method: "POST", json: { makeAdmin } });
-    refetch();
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/admin`, { method: "POST", json: { makeAdmin } });
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const deleteUser = async () => {
-    const confirmed = window.confirm("Delete this user and all their data?");
+    const confirmed = window.confirm("Delete this user and all their data? This cannot be undone.");
     if (!confirmed) return;
-    await apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
-    navigate("/admin/users");
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}`, { method: "DELETE" });
+      navigate("/admin/users");
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
   };
 
   const protectedEmailSet = new Set((data?.protectedEmails ?? []).map((entry) => entry.toLowerCase()));
@@ -82,6 +115,11 @@ export function AdminUserDetailPage() {
 
   return (
     <div className="space-y-8">
+      {actionError && (
+        <p className="rounded-lg bg-red-50 px-4 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
+          {actionError}
+        </p>
+      )}
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div>

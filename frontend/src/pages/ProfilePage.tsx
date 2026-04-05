@@ -54,9 +54,14 @@ export function ProfilePage() {
   };
 
   const removeApiKey = async () => {
-    await apiFetch("/profile/api-key", { method: "DELETE" });
-    refetch();
-    setMessage("API key removed.");
+    setErrMsg("");
+    try {
+      await apiFetch("/profile/api-key", { method: "DELETE" });
+      refetch();
+      setMessage("API key removed.");
+    } catch (err) {
+      setErrMsg((err as Error).message);
+    }
   };
 
   const addEmail = async (event: FormEvent) => {
@@ -76,13 +81,23 @@ export function ProfilePage() {
   };
 
   const deleteEmail = async (id: string) => {
-    await apiFetch(`/profile/emails/${id}`, { method: "DELETE" });
-    refetch();
+    setErrMsg("");
+    try {
+      await apiFetch(`/profile/emails/${id}`, { method: "DELETE" });
+      refetch();
+    } catch (err) {
+      setErrMsg((err as Error).message);
+    }
   };
 
   const setPrimaryEmail = async (id: string) => {
-    await apiFetch(`/profile/emails/${id}/primary`, { method: "POST" });
-    refetch();
+    setErrMsg("");
+    try {
+      await apiFetch(`/profile/emails/${id}/primary`, { method: "POST" });
+      refetch();
+    } catch (err) {
+      setErrMsg((err as Error).message);
+    }
   };
 
   const deleteAccount = async () => {
