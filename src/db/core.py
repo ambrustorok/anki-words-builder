@@ -4,7 +4,13 @@ from contextlib import contextmanager
 import psycopg2
 from psycopg2.extras import RealDictCursor
 
-from ..settings import POSTGRES_DB, POSTGRES_HOST, POSTGRES_PASSWORD, POSTGRES_PORT, POSTGRES_USER
+from ..settings import (
+    POSTGRES_DB,
+    POSTGRES_HOST,
+    POSTGRES_PASSWORD,
+    POSTGRES_PORT,
+    POSTGRES_USER,
+)
 
 
 @contextmanager
@@ -85,9 +91,7 @@ def init_db():
                 )
                 """
             )
-            cur.execute(
-                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS anki_id UUID"
-            )
+            cur.execute("ALTER TABLE decks ADD COLUMN IF NOT EXISTS anki_id UUID")
             cur.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_anki_id ON decks (anki_id)"
             )
@@ -112,24 +116,14 @@ def init_db():
                 )
                 """
             )
-            cur.execute(
-                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS entry_anki_id UUID"
-            )
-            cur.execute(
-                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_id UUID"
-            )
-            cur.execute(
-                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS front_audio BYTEA"
-            )
-            cur.execute(
-                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS back_audio BYTEA"
-            )
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS entry_anki_id UUID")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_id UUID")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS front_audio BYTEA")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS back_audio BYTEA")
             cur.execute(
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS audio_filename TEXT"
             )
-            cur.execute(
-                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS card_group_id UUID"
-            )
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS card_group_id UUID")
             cur.execute(
                 "ALTER TABLE cards ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()"
             )
@@ -154,9 +148,7 @@ def init_db():
                 WHERE card_group_id IS NULL
                 """
             )
-            cur.execute(
-                "ALTER TABLE cards ALTER COLUMN anki_id SET NOT NULL"
-            )
+            cur.execute("ALTER TABLE cards ALTER COLUMN anki_id SET NOT NULL")
             cur.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_cards_anki_id ON cards (anki_id)"
             )
@@ -184,6 +176,46 @@ def init_db():
             )
             cur.execute(
                 "CREATE INDEX IF NOT EXISTS idx_cards_group ON cards (card_group_id)"
+            )
+
+            # Deck-level tag definitions
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS deck_tags (
+                    id UUID PRIMARY KEY,
+                    deck_id UUID NOT NULL REFERENCES decks(id) ON DELETE CASCADE,
+                    name TEXT NOT NULL,
+                    category TEXT NOT NULL DEFAULT '',
+                    color TEXT NOT NULL DEFAULT '#6366f1',
+                    sort_order INT NOT NULL DEFAULT 0,
+                    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_deck_tags_deck ON deck_tags (deck_id, sort_order)"
+            )
+            cur.execute(
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_deck_tags_deck_name ON deck_tags (deck_id, name)"
+            )
+
+            # Card-group ↔ tag join table
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS card_tags (
+                    card_group_id UUID NOT NULL,
+                    tag_id UUID NOT NULL REFERENCES deck_tags(id) ON DELETE CASCADE,
+                    PRIMARY KEY (card_group_id, tag_id)
+                )
+                """
+            )
+            cur.execute(
+                "CREATE INDEX IF NOT EXISTS idx_card_tags_group ON card_tags (card_group_id)"
+            )
+
+            # Tag mode on decks — stored as a JSONB column added to decks
+            cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS tag_mode TEXT NOT NULL DEFAULT 'off'"
             )
 
             # App-level settings

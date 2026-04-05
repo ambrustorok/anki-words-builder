@@ -11,6 +11,7 @@ from ..services import api_keys as api_key_service
 from ..services import cards as card_service
 from ..services import decks as deck_service
 from ..services import generation as generation_service
+from ..services import tags as tag_service
 from .dependencies import get_current_user, parse_uuid
 
 router = APIRouter(prefix="/cards")
@@ -43,6 +44,7 @@ class CardActionRequest(BaseModel):
     action: Literal[
         "save",
         "populate_all",
+        "suggest_tags",
         "regen_native_phrase",
         "regen_dictionary_entry",
         "regen_example_sentence",
@@ -57,6 +59,23 @@ class CardActionRequest(BaseModel):
         None, alias="audioPreferences"
     )
     input_mode: Literal["foreign", "native"] = Field("foreign", alias="inputMode")
+    tag_ids: List[str] = Field(default_factory=list, alias="tagIds")
+
+
+def _save_card_tags(group_id, tag_ids: List[str]) -> None:
+    """Save tag assignments for a card group. Silently skips invalid UUIDs."""
+    import uuid as _uuid_mod
+
+    valid_uuids = []
+    for tid in tag_ids:
+        try:
+            valid_uuids.append(_uuid_mod.UUID(tid))
+        except (ValueError, AttributeError):
+            pass
+    try:
+        tag_service.set_card_group_tags(group_id, valid_uuids)
+    except Exception:
+        pass  # tags are non-critical — don't fail the save
 
 
 def _encode_audio_preview(audio_bytes: Optional[bytes]) -> str:
@@ -74,7 +93,9 @@ def _decode_audio_preview(data: Optional[str]) -> Optional[bytes]:
         return None
 
 
-def _infer_audio_format(filename: Optional[str], content_type: Optional[str]) -> Optional[str]:
+def _infer_audio_format(
+    filename: Optional[str], content_type: Optional[str]
+) -> Optional[str]:
     if content_type:
         normalized = content_type.split(";")[0].strip().lower()
         content_map = {
@@ -111,7 +132,9 @@ def _infer_audio_format(filename: Optional[str], content_type: Optional[str]) ->
     return None
 
 
-def _convert_audio_bytes_to_mp3(data: bytes, *, source_format: Optional[str] = None) -> bytes:
+def _convert_audio_bytes_to_mp3(
+    data: bytes, *, source_format: Optional[str] = None
+) -> bytes:
     from pydub import AudioSegment
     from pydub.exceptions import CouldntDecodeError
 
@@ -123,7 +146,9 @@ def _convert_audio_bytes_to_mp3(data: bytes, *, source_format: Optional[str] = N
         else:
             segment = AudioSegment.from_file(buffer)
     except CouldntDecodeError as exc:
-        raise ValueError("Unable to decode the uploaded audio. Please upload a valid audio file.") from exc
+        raise ValueError(
+            "Unable to decode the uploaded audio. Please upload a valid audio file."
+        ) from exc
     except Exception as exc:
         raise ValueError("Failed to process the uploaded audio file.") from exc
     output = io.BytesIO()
@@ -145,7 +170,9 @@ async def _download_audio_from_url(url: str) -> bytes:
         status = exc.response.status_code if exc.response else "unknown"
         raise ValueError(f"Unable to download audio (HTTP {status}).") from exc
     except httpx.RequestError as exc:
-        raise ValueError("Unable to reach the audio URL. Check the link and try again.") from exc
+        raise ValueError(
+            "Unable to reach the audio URL. Check the link and try again."
+        ) from exc
     data = response.content
     if not data:
         raise ValueError("Downloaded file was empty.")
@@ -180,7 +207,9 @@ def _default_audio_preferences(deck: Optional[dict]) -> dict:
     return {"voice": "random", "instructions": instructions}
 
 
-def _merge_audio_preferences(preferences: Optional[AudioPreferences], deck: dict) -> dict:
+def _merge_audio_preferences(
+    preferences: Optional[AudioPreferences], deck: dict
+) -> dict:
     defaults = _default_audio_preferences(deck)
     if not preferences:
         return defaults
@@ -204,8 +233,14 @@ def _normalize_payload(deck: dict, payload: Dict[str, str]) -> Dict[str, str]:
     return normalized
 
 
-def _normalize_directions(request: CardActionRequest, group: Optional[dict]) -> List[str]:
-    requested = [direction for direction in request.directions if direction in {"forward", "backward"}]
+def _normalize_directions(
+    request: CardActionRequest, group: Optional[dict]
+) -> List[str]:
+    requested = [
+        direction
+        for direction in request.directions
+        if direction in {"forward", "backward"}
+    ]
     if requested:
         return requested
     if group:
@@ -252,13 +287,19 @@ async def _handle_action(
 
     foreign_field_key = _get_foreign_field_key(deck)
     if not foreign_field_key:
-        raise HTTPException(status_code=400, detail="Deck is missing a foreign phrase field.")
+        raise HTTPException(
+            status_code=400, detail="Deck is missing a foreign phrase field."
+        )
     native_field_key = _get_native_field_key(deck)
 
-    input_mode = request.input_mode if request.input_mode in {"foreign", "native"} else "foreign"
+    input_mode = (
+        request.input_mode if request.input_mode in {"foreign", "native"} else "foreign"
+    )
     if input_mode == "native":
         if not native_field_key:
-            raise HTTPException(status_code=400, detail="Deck is missing a native phrase field.")
+            raise HTTPException(
+                status_code=400, detail="Deck is missing a native phrase field."
+            )
         seed_field_key = native_field_key
         seed_label = "native phrase"
     else:
@@ -267,7 +308,9 @@ async def _handle_action(
 
     generation_allowed = api_key_service.user_can_generate(user["id"])
     client = (
-        api_key_service.get_openai_client_for_user(user["id"]) if generation_allowed else None
+        api_key_service.get_openai_client_for_user(user["id"])
+        if generation_allowed
+        else None
     )
     generation_prompts = deck_service.get_generation_prompts(deck)
     native_language = user.get("native_language") or "English"
@@ -292,19 +335,25 @@ async def _handle_action(
             )
         _require_generation(client, generation_allowed)
         try:
-            payload[foreign_field_key] = generation_service.generate_foreign_from_native(
-                client,
-                generation_prompts,
-                payload.get(seed_field_key, ""),
-                native_language,
-                deck["target_language"],
+            payload[foreign_field_key] = (
+                generation_service.generate_foreign_from_native(
+                    client,
+                    generation_prompts,
+                    payload.get(seed_field_key, ""),
+                    native_language,
+                    deck["target_language"],
+                )
             )
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Translation failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Translation failed: {exc}"
+            ) from exc
 
     if request.action == "fetch_audio":
         if not audio_allowed:
-            raise HTTPException(status_code=400, detail="Audio is disabled for this deck.")
+            raise HTTPException(
+                status_code=400, detail="Audio is disabled for this deck."
+            )
         if not audio_url:
             raise HTTPException(status_code=400, detail="Enter an audio URL to fetch.")
         audio_bytes = await _download_audio_from_url(audio_url)
@@ -312,6 +361,24 @@ async def _handle_action(
         return {
             "status": "ok",
             "message": "Audio fetched from link. Remember to save when ready.",
+            "payload": payload,
+            "directions": directions,
+            "audioPreview": audio_preview_b64,
+        }
+
+    if request.action == "suggest_tags":
+        ensure_foreign_phrase(require_translation=False)
+        _require_generation(client, generation_allowed)
+        available_tags = tag_service.list_deck_tags(deck_uuid)
+        suggested = generation_service.infer_tags(
+            client,
+            payload,
+            deck["target_language"],
+            available_tags,
+        )
+        return {
+            "status": "ok",
+            "suggestedTagNames": suggested,
             "payload": payload,
             "directions": directions,
             "audioPreview": audio_preview_b64,
@@ -391,7 +458,9 @@ async def _handle_action(
 
     if request.action == "regen_audio":
         if not audio_allowed:
-            raise HTTPException(status_code=400, detail="Audio is disabled for this deck.")
+            raise HTTPException(
+                status_code=400, detail="Audio is disabled for this deck."
+            )
         _require_generation(client, generation_allowed)
         ensure_foreign_phrase(require_translation=input_mode == "native")
         try:
@@ -403,7 +472,9 @@ async def _handle_action(
             )
             audio_preview_b64 = _encode_audio_preview(audio_bytes)
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Audio generation failed: {exc}"
+            ) from exc
         return {
             "status": "ok",
             "message": "Audio regenerated.",
@@ -425,7 +496,9 @@ async def _handle_action(
                 deck.get("field_schema"),
             )
         except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
+            raise HTTPException(
+                status_code=500, detail=f"Generation failed: {exc}"
+            ) from exc
         if audio_allowed:
             try:
                 audio_bytes = generation_service.generate_audio_for_phrase(
@@ -436,19 +509,31 @@ async def _handle_action(
                 )
                 audio_preview_b64 = _encode_audio_preview(audio_bytes)
             except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}") from exc
+                raise HTTPException(
+                    status_code=500, detail=f"Audio generation failed: {exc}"
+                ) from exc
+        # Auto-infer tags if deck tag mode is 'auto'
+        suggested_tag_names: List[str] = []
+        if tag_service.get_deck_tag_mode(deck) == "auto":
+            available_tags = tag_service.list_deck_tags(deck_uuid)
+            suggested_tag_names = generation_service.infer_tags(
+                client, payload, deck["target_language"], available_tags
+            )
         return {
             "status": "ok",
             "message": "All fields populated. Review and save when ready.",
             "payload": payload,
             "directions": directions,
             "audioPreview": audio_preview_b64,
+            "suggestedTagNames": suggested_tag_names,
         }
 
     if request.action == "save":
         ensure_foreign_phrase(require_translation=input_mode == "native")
         if request.mode == "create" and not directions:
-            raise HTTPException(status_code=400, detail="Select at least one direction.")
+            raise HTTPException(
+                status_code=400, detail="Select at least one direction."
+            )
         auto_generate = generation_allowed and client is not None
 
         if auto_generate:
@@ -463,7 +548,9 @@ async def _handle_action(
                     deck.get("field_schema"),
                 )
             except Exception as exc:
-                raise HTTPException(status_code=500, detail=f"Generation failed: {exc}") from exc
+                raise HTTPException(
+                    status_code=500, detail=f"Generation failed: {exc}"
+                ) from exc
             if audio_allowed and audio_bytes is None:
                 try:
                     audio_bytes = generation_service.generate_audio_for_phrase(
@@ -474,7 +561,9 @@ async def _handle_action(
                     )
                     audio_preview_b64 = _encode_audio_preview(audio_bytes)
                 except Exception as exc:
-                    raise HTTPException(status_code=500, detail=f"Audio generation failed: {exc}") from exc
+                    raise HTTPException(
+                        status_code=500, detail=f"Audio generation failed: {exc}"
+                    ) from exc
 
         if request.mode == "create":
             try:
@@ -488,6 +577,8 @@ async def _handle_action(
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
+            # Save tag assignments
+            _save_card_tags(group_id, request.tag_ids)
             return {
                 "status": "saved",
                 "deckId": str(deck["id"]),
@@ -509,6 +600,9 @@ async def _handle_action(
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         if not success:
             raise HTTPException(status_code=404, detail="Card not found.")
+        # Save tag assignments on edit too
+        group_uuid = parse_uuid(request.group_id, entity="Card")
+        _save_card_tags(group_uuid, request.tag_ids)
         return {
             "status": "saved",
             "deckId": str(deck["id"]),
@@ -532,6 +626,8 @@ def get_card_group(group_id: str, user=Depends(get_current_user)):
     deck = group["deck"]
     audio_preview = _encode_audio_preview(group.get("audio"))
     directions = [row["direction"] for row in group["rows"]]
+    tags = tag_service.get_card_group_tags(group_uuid)
+    deck_tags = tag_service.list_deck_tags(deck["id"])
     return {
         "deck": deck,
         "group": {
@@ -540,9 +636,12 @@ def get_card_group(group_id: str, user=Depends(get_current_user)):
             "directions": directions,
             "created_at": group.get("created_at"),
             "updated_at": group.get("updated_at"),
+            "tags": tags,
         },
         "audioPreview": audio_preview,
         "audioPreferences": _default_audio_preferences(deck),
+        "deckTags": deck_tags,
+        "tagMode": tag_service.get_deck_tag_mode(deck),
     }
 
 
@@ -557,7 +656,9 @@ def delete_card_group(group_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/{card_id}/audio")
-def card_audio(card_id: str, side: str = Query("front"), user=Depends(get_current_user)):
+def card_audio(
+    card_id: str, side: str = Query("front"), user=Depends(get_current_user)
+):
     card_uuid = parse_uuid(card_id, entity="Card")
     if side not in {"front", "back"}:
         side = "front"
@@ -569,6 +670,8 @@ def card_audio(card_id: str, side: str = Query("front"), user=Depends(get_curren
         media_type="audio/mpeg",
         headers={"Cache-Control": "no-cache"},
     )
+
+
 @router.get("/options")
 def card_options():
     return {

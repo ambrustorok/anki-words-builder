@@ -6,6 +6,30 @@ export interface DeckField {
   auto_generate?: boolean;
 }
 
+// ---------------------------------------------------------------------------
+// Tags
+// ---------------------------------------------------------------------------
+
+/** A single tag definition belonging to a deck */
+export interface DeckTag {
+  id: string;
+  deck_id?: string;
+  name: string;
+  category: string;
+  color: string;
+  sort_order: number;
+  created_at?: string;
+}
+
+/** Tag mode controls how/whether tags work for a deck */
+export type TagMode = "off" | "manual" | "auto";
+
+/** A preset category returned from the API */
+export interface TagPresetCategory {
+  category: string;
+  tags: { name: string; color: string }[];
+}
+
 export interface PromptFaceTemplate {
   front?: string;
   back?: string;
@@ -44,6 +68,7 @@ export interface CardGroup {
   directions: CardDirection[];
   created_at?: string;
   updated_at?: string;
+  tags?: DeckTag[];
 }
 
 export interface DeckDetailResponse {
@@ -53,4 +78,5 @@ export interface DeckDetailResponse {
   cardCount: number;
   lastModified?: string;
   generationPrompts: Record<string, unknown>;
+  tagMode?: TagMode;
 }

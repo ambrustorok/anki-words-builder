@@ -5,7 +5,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { FieldSchemaEditor, FieldSchemaEntry, FieldOption } from "../components/FieldSchemaEditor";
-import type { DeckDetailResponse, PromptTemplates } from "../types";
+import type { DeckDetailResponse, DeckTag, TagMode, TagPresetCategory, PromptTemplates } from "../types";
 
 const PROMPT_KEYS = ["translation", "dictionary", "sentence"] as const;
 type PromptKey = (typeof PROMPT_KEYS)[number];
@@ -114,6 +114,17 @@ export function DeckEditorPage({ mode }: Props) {
   const [cardTemplates, setCardTemplates] = useState<CardTemplateState>(() => createEmptyCardTemplates());
   const [error, setError] = useState("");
   const [deleting, setDeleting] = useState(false);
+  // Tag state
+  const [tagMode, setTagMode] = useState<TagMode>("off");
+  const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
+  const [newTagName, setNewTagName] = useState("");
+  const [newTagCategory, setNewTagCategory] = useState("");
+  const [newTagColor, setNewTagColor] = useState("#6366f1");
+  const [tagError, setTagError] = useState("");
+  const [showPresets, setShowPresets] = useState(false);
+  const [presets, setPresets] = useState<TagPresetCategory[]>([]);
+  const [presetsLoaded, setPresetsLoaded] = useState(false);
+
   const loadedDeckIdRef = useRef<string | null>(null);
   const audioTemplateRef = useRef("");
   const cardTemplateDefaultsRef = useRef<CardTemplateState>(createEmptyCardTemplates());
@@ -180,6 +191,12 @@ export function DeckEditorPage({ mode }: Props) {
         cardTemplateDefaultsRef.current
       );
       setCardTemplates(mergedCardTemplates);
+      // Load tags
+      if (deckData.tagMode) setTagMode(deckData.tagMode);
+      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode }>(`/tags/decks/${deckIdentifier}/tags`).then((resp) => {
+        setDeckTags(resp.tags);
+        setTagMode(resp.tag_mode || deckData.tagMode || "off");
+      }).catch(() => {});
     }
   }, [deckData, mode]);
 
@@ -213,6 +230,98 @@ export function DeckEditorPage({ mode }: Props) {
       }
     }));
   };
+
+  // ---------------------------------------------------------------------------
+  // Tag management handlers (only active in edit mode — deck must exist first)
+  // ---------------------------------------------------------------------------
+
+  const handleTagModeChange = async (nextMode: TagMode) => {
+    setTagMode(nextMode);
+    if (!deckId) return;
+    try {
+      await apiFetch(`/tags/decks/${deckId}/tag-mode`, { method: "PUT", json: { mode: nextMode } });
+    } catch {
+      // non-critical — mode is saved on submit too via deck update
+    }
+  };
+
+  const handleLoadPresets = async () => {
+    if (!deckId) return;
+    if (!presetsLoaded) {
+      try {
+        const resp = await apiFetch<{ presets: TagPresetCategory[] }>(`/tags/decks/${deckId}/tags/presets`);
+        setPresets(resp.presets);
+        setPresetsLoaded(true);
+      } catch {}
+    }
+    setShowPresets((prev) => !prev);
+  };
+
+  const handleAddPresetCategory = async (preset: TagPresetCategory) => {
+    if (!deckId) return;
+    setTagError("");
+    try {
+      const tags = preset.tags.map((t, i) => ({ ...t, category: preset.category, sort_order: i }));
+      const resp = await apiFetch<{ tags: DeckTag[] }>(`/tags/decks/${deckId}/tags/bulk`, {
+        method: "POST",
+        json: { tags },
+      });
+      setDeckTags((prev) => {
+        const existing = new Set(prev.map((t) => t.id));
+        return [...prev, ...resp.tags.filter((t) => !existing.has(t.id))];
+      });
+    } catch (err) {
+      setTagError((err as Error).message);
+    }
+  };
+
+  const handleCreateTag = async () => {
+    if (!deckId || !newTagName.trim()) return;
+    setTagError("");
+    try {
+      const tag = await apiFetch<DeckTag>(`/tags/decks/${deckId}/tags`, {
+        method: "POST",
+        json: {
+          name: newTagName.trim(),
+          category: newTagCategory.trim(),
+          color: newTagColor,
+          sort_order: deckTags.filter((t) => t.category === newTagCategory.trim()).length,
+        },
+      });
+      setDeckTags((prev) => [...prev, tag]);
+      setNewTagName("");
+    } catch (err) {
+      setTagError((err as Error).message);
+    }
+  };
+
+  const handleUpdateTagColor = async (tagId: string, color: string) => {
+    setDeckTags((prev) => prev.map((t) => (t.id === tagId ? { ...t, color } : t)));
+    try {
+      await apiFetch(`/tags/${tagId}`, { method: "PATCH", json: { color } });
+    } catch {}
+  };
+
+  const handleUpdateTagName = async (tagId: string, name: string) => {
+    setDeckTags((prev) => prev.map((t) => (t.id === tagId ? { ...t, name } : t)));
+    try {
+      await apiFetch(`/tags/${tagId}`, { method: "PATCH", json: { name } });
+    } catch {}
+  };
+
+  const handleDeleteTag = async (tagId: string) => {
+    setDeckTags((prev) => prev.filter((t) => t.id !== tagId));
+    try {
+      await apiFetch(`/tags/${tagId}`, { method: "DELETE" });
+    } catch {}
+  };
+
+  // Grouped tags by category for display
+  const tagsByCategory = deckTags.reduce<Record<string, DeckTag[]>>((acc, tag) => {
+    const cat = tag.category || "Uncategorized";
+    (acc[cat] = acc[cat] || []).push(tag);
+    return acc;
+  }, {});
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -402,6 +511,194 @@ export function DeckEditorPage({ mode }: Props) {
           <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
             Re-enable audio to edit the default instructions.
           </p>
+        )}
+      </section>
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Tags section                                                        */}
+      {/* ------------------------------------------------------------------ */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Tags</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">
+              Define tags for this deck and choose how they are assigned to cards.
+            </p>
+          </div>
+          {/* Tag mode toggle */}
+          <div className="inline-flex overflow-hidden rounded-full border border-slate-200 text-sm dark:border-slate-700">
+            {(["off", "manual", "auto"] as TagMode[]).map((m) => (
+              <button
+                key={m}
+                type="button"
+                onClick={() => handleTagModeChange(m)}
+                className={`px-4 py-2 font-medium capitalize transition ${
+                  tagMode === m
+                    ? "bg-brand text-slate-900"
+                    : "bg-transparent text-slate-600 dark:text-slate-300"
+                }`}
+              >
+                {m === "off" ? "Off" : m === "manual" ? "Manual" : "AI auto"}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {tagMode === "off" ? (
+          <p className="mt-4 text-sm text-slate-500 dark:text-slate-400">
+            Tags are disabled for this deck. Enable manual or AI auto mode to start adding tags.
+          </p>
+        ) : (
+          <>
+            {/* Tag mode description */}
+            <p className="mt-3 text-xs text-slate-500 dark:text-slate-400">
+              {tagMode === "manual"
+                ? "Tags are shown on the card form. You assign them manually when creating or editing cards."
+                : "Tags are suggested automatically by AI when you process a card, and you can accept or reject each suggestion."}
+            </p>
+
+            {/* Existing tags grouped by category */}
+            {Object.keys(tagsByCategory).length > 0 && (
+              <div className="mt-4 space-y-4">
+                {Object.entries(tagsByCategory).map(([category, tags]) => (
+                  <div key={category}>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                      {category}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => (
+                        <div
+                          key={tag.id}
+                          className="group flex items-center gap-1 rounded-full border px-3 py-1 text-sm"
+                          style={{ borderColor: tag.color, color: tag.color }}
+                        >
+                          {/* Color picker */}
+                          <label className="relative cursor-pointer" title="Change color">
+                            <span
+                              className="inline-block h-3 w-3 rounded-full border border-white/30"
+                              style={{ backgroundColor: tag.color }}
+                            />
+                            <input
+                              type="color"
+                              className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                              value={tag.color}
+                              onChange={(e) => handleUpdateTagColor(tag.id, e.target.value)}
+                            />
+                          </label>
+                          {/* Editable name */}
+                          <input
+                            className="bg-transparent text-sm outline-none"
+                            style={{ color: tag.color, width: `${Math.max(tag.name.length, 2)}ch` }}
+                            value={tag.name}
+                            onChange={(e) => handleUpdateTagName(tag.id, e.target.value)}
+                            onBlur={(e) => handleUpdateTagName(tag.id, e.target.value)}
+                          />
+                          {/* Delete */}
+                          <button
+                            type="button"
+                            className="ml-1 opacity-0 group-hover:opacity-100 text-slate-400 hover:text-red-500 transition-opacity"
+                            onClick={() => handleDeleteTag(tag.id)}
+                            title="Remove tag"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {/* Add new tag (only in edit mode — deck must exist) */}
+            {isEdit ? (
+              <div className="mt-4 flex flex-wrap items-end gap-2">
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  Category
+                  <input
+                    className="mt-1 block w-28 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    placeholder="e.g. CEFR"
+                    value={newTagCategory}
+                    onChange={(e) => setNewTagCategory(e.target.value)}
+                  />
+                </label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  Tag name
+                  <input
+                    className="mt-1 block w-28 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
+                    placeholder="e.g. C1"
+                    value={newTagName}
+                    onChange={(e) => setNewTagName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && (e.preventDefault(), handleCreateTag())}
+                  />
+                </label>
+                <label className="text-xs text-slate-500 dark:text-slate-400">
+                  Color
+                  <input
+                    type="color"
+                    className="mt-1 block h-8 w-10 cursor-pointer rounded-lg border border-slate-200 bg-white p-0.5 dark:border-slate-700"
+                    value={newTagColor}
+                    onChange={(e) => setNewTagColor(e.target.value)}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={handleCreateTag}
+                  disabled={!newTagName.trim()}
+                  className="rounded-full bg-brand px-4 py-1.5 text-sm font-semibold text-slate-900 disabled:opacity-50"
+                >
+                  Add tag
+                </button>
+                <button
+                  type="button"
+                  onClick={handleLoadPresets}
+                  className="rounded-full border border-slate-300 px-4 py-1.5 text-sm text-slate-600 dark:border-slate-600 dark:text-slate-300"
+                >
+                  {showPresets ? "Hide presets" : "Load presets"}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-4 text-xs text-slate-400 dark:text-slate-500">
+                Save the deck first, then come back to add tags.
+              </p>
+            )}
+
+            {tagError && <p className="mt-2 text-xs text-red-500">{tagError}</p>}
+
+            {/* Presets panel */}
+            {showPresets && presets.length > 0 && (
+              <div className="mt-4 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900/40">
+                <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  Tag presets — click a category to add all its tags
+                </p>
+                <div className="flex flex-wrap gap-3">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.category}
+                      type="button"
+                      onClick={() => handleAddPresetCategory(preset)}
+                      className="flex flex-col items-start rounded-2xl border border-slate-200 bg-white px-4 py-3 text-left hover:border-brand dark:border-slate-700 dark:bg-slate-900"
+                    >
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-200">
+                        {preset.category}
+                      </span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {preset.tags.map((t) => (
+                          <span
+                            key={t.name}
+                            className="rounded-full px-2 py-0.5 text-xs font-medium"
+                            style={{ backgroundColor: t.color + "33", color: t.color, border: `1px solid ${t.color}` }}
+                          >
+                            {t.name}
+                          </span>
+                        ))}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
         )}
       </section>
 

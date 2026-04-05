@@ -4,6 +4,7 @@ import { Link, useNavigate } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { DeckQuickActions } from "../components/DeckQuickActions";
+import type { DeckTag } from "../types";
 
 interface DashboardDeck {
   id: string;
@@ -16,7 +17,7 @@ interface DashboardDeck {
 }
 
 interface DashboardEntry {
-  group_id: string; // Changed from id/card_group_id
+  group_id: string;
   deck_id: string;
   deck_name: string;
   target_language: string;
@@ -26,6 +27,7 @@ interface DashboardEntry {
     front: string;
     back: string;
   }[];
+  tags?: DeckTag[];
   created_at?: string;
   updated_at?: string;
 }
@@ -162,12 +164,21 @@ export function DashboardPage() {
                   }}
                   className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
                 >
-                  <div className="flex items-center justify-between text-xs uppercase text-slate-500 dark:text-slate-400">
-                    <div className="flex gap-1">
+                  <div className="flex flex-wrap items-center gap-1 text-xs uppercase text-slate-500 dark:text-slate-400">
+                    <div className="flex flex-wrap gap-1">
                       {hasForward && <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">Fwd</span>}
                       {hasBackward && <span className="rounded-full bg-white px-2 py-1 text-slate-600 dark:bg-slate-800 dark:text-slate-100">Bwd</span>}
+                      {(group.tags ?? []).map((tag) => (
+                        <span
+                          key={tag.id}
+                          className="rounded-full border px-2 py-0.5 font-medium normal-case"
+                          style={{ borderColor: tag.color, color: tag.color, backgroundColor: tag.color + "1a" }}
+                        >
+                          {tag.name}
+                        </span>
+                      ))}
                     </div>
-                    <span>
+                    <span className="ml-auto">
                       {group.deck_name} · {group.target_language}
                     </span>
                   </div>

@@ -200,7 +200,9 @@ def _normalize_field(entry: dict) -> Optional[dict]:
         "key": key,
         "label": entry.get("label") or base.get("label") or key,
         "required": bool(
-            entry.get("required") if entry.get("required") is not None else base.get("required", False)
+            entry.get("required")
+            if entry.get("required") is not None
+            else base.get("required", False)
         ),
         "description": entry.get("description") or base.get("description") or "",
         "auto_generate": bool(
@@ -243,24 +245,35 @@ def default_field_schema():
     return schema
 
 
-def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
-                field_schema: Optional[List[dict]] = None,
-                prompt_templates: Optional[dict] = None,
-                audio_instructions: Optional[str] = None,
-                audio_enabled: Optional[bool] = None,
-                anki_id: Optional[uuid.UUID] = None) -> dict:
+def create_deck(
+    owner_id: uuid.UUID,
+    name: str,
+    target_language: str,
+    field_schema: Optional[List[dict]] = None,
+    prompt_templates: Optional[dict] = None,
+    audio_instructions: Optional[str] = None,
+    audio_enabled: Optional[bool] = None,
+    anki_id: Optional[uuid.UUID] = None,
+) -> dict:
     deck_id = uuid.uuid4()
     deck_anki_id = anki_id or uuid.uuid4()
-    schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
-    prompts = deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
+    schema = (
+        normalize_field_schema(field_schema) if field_schema else default_field_schema()
+    )
+    prompts = (
+        deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
+    )
     audio_cfg = prompts.get("audio") or {}
     if audio_instructions is not None:
-        instructions = (audio_instructions or "").strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+        instructions = (
+            audio_instructions or ""
+        ).strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
         audio_cfg["instructions"] = instructions
     if audio_enabled is not None:
         audio_cfg["enabled"] = bool(audio_enabled)
     prompts["audio"] = {
-        "instructions": audio_cfg.get("instructions") or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
+        "instructions": audio_cfg.get("instructions")
+        or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE,
         "enabled": audio_cfg.get("enabled", True),
     }
     with get_connection() as conn:
@@ -269,7 +282,7 @@ def create_deck(owner_id: uuid.UUID, name: str, target_language: str,
                 """
                 INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at, anki_id
+                RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at, anki_id
                 """,
                 (
                     _uuid(deck_id),
@@ -304,6 +317,7 @@ def list_decks(owner_id: uuid.UUID) -> List[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
+                       d.tag_mode,
                        d.created_at,
                        d.updated_at,
                        GREATEST(
@@ -337,6 +351,7 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
+                       d.tag_mode,
                        d.created_at,
                        d.updated_at,
                        COALESCE(COUNT(c.id), 0) AS card_count,
@@ -371,6 +386,7 @@ def list_least_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
+                       d.tag_mode,
                        d.created_at,
                        d.updated_at,
                        GREATEST(
@@ -405,6 +421,7 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
+                       d.tag_mode,
                        d.created_at,
                        d.updated_at
                 FROM decks d
@@ -432,6 +449,7 @@ def get_deck_by_anki_id(owner_id: uuid.UUID, anki_id: uuid.UUID) -> Optional[dic
                        d.target_language,
                        d.field_schema,
                        d.prompt_templates,
+                       d.tag_mode,
                        d.created_at,
                        d.updated_at
                 FROM decks d
@@ -455,8 +473,12 @@ def apply_backup_metadata(
     field_schema: Optional[List[dict]],
     prompt_templates: Optional[dict],
 ) -> Optional[dict]:
-    schema = normalize_field_schema(field_schema) if field_schema else default_field_schema()
-    prompts = deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
+    schema = (
+        normalize_field_schema(field_schema) if field_schema else default_field_schema()
+    )
+    prompts = (
+        deepcopy(prompt_templates) if prompt_templates else default_prompt_templates()
+    )
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -468,7 +490,7 @@ def apply_backup_metadata(
                     prompt_templates = %s,
                     updated_at = NOW()
                 WHERE id = %s AND owner_id = %s
-                RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, created_at, updated_at
+                RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                 """,
                 (
                     name.strip(),
@@ -511,11 +533,15 @@ def update_deck(
                 existing = get_deck(deck_id, owner_id)
                 if not existing:
                     return None
-                merged = deepcopy(existing.get("prompt_templates") or default_prompt_templates())
+                merged = deepcopy(
+                    existing.get("prompt_templates") or default_prompt_templates()
+                )
                 if generation_prompts is not None:
                     merged["generation"] = generation_prompts
                 if audio_instructions is not None:
-                    instruction_text = (audio_instructions or "").strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
+                    instruction_text = (
+                        audio_instructions or ""
+                    ).strip() or DEFAULT_AUDIO_INSTRUCTIONS_TEMPLATE
                     audio_cfg = merged.get("audio") or {}
                     audio_cfg["instructions"] = instruction_text
                     merged["audio"] = audio_cfg
@@ -535,14 +561,22 @@ def update_deck(
                     field_schema = %s,
                     updated_at = NOW()
                 WHERE id = %s AND owner_id = %s
-                RETURNING id, name, target_language, field_schema, prompt_templates, created_at, updated_at
+                RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                 """,
-                (name.strip(), target_language.strip(), Json(schema), _uuid(deck_id), _uuid(owner_id)),
+                (
+                    name.strip(),
+                    target_language.strip(),
+                    Json(schema),
+                    _uuid(deck_id),
+                    _uuid(owner_id),
+                ),
             )
             updated = cur.fetchone()
             if not updated:
                 return None
-            updated["field_schema"] = normalize_field_schema(updated.get("field_schema"))
+            updated["field_schema"] = normalize_field_schema(
+                updated.get("field_schema")
+            )
             if prompts is not None:
                 cur.execute(
                     """
@@ -592,3 +626,15 @@ def get_audio_instructions(deck: dict) -> str:
 def is_audio_enabled(deck: dict) -> bool:
     audio_cfg = _resolved_audio_config(deck)
     return bool(audio_cfg.get("enabled", True))
+
+
+def set_deck_tag_mode(deck_id: uuid.UUID, owner_id: uuid.UUID, mode: str) -> None:
+    if mode not in ("off", "manual", "auto"):
+        raise ValueError("tag_mode must be 'off', 'manual', or 'auto'.")
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE decks SET tag_mode = %s, updated_at = NOW() WHERE id = %s AND owner_id = %s",
+                (mode, _uuid(deck_id), _uuid(owner_id)),
+            )
+        conn.commit()

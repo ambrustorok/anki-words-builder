@@ -7,6 +7,7 @@ from psycopg2.extras import Json, RealDictCursor
 
 from ..db.core import get_connection
 from . import decks as deck_service
+from . import tags as tag_service
 
 LEGACY_PROMPT_TEMPLATES = {
     "forward": [
@@ -44,6 +45,17 @@ LEGACY_PROMPT_TEMPLATES = {
 CARD_GUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "anki-words-builder/card")
 
 
+def _attach_tags_to_groups(groups: List[dict]) -> List[dict]:
+    """Batch-fetch tags for a list of card groups and attach them in-place."""
+    if not groups:
+        return groups
+    group_ids = [g["group_id"] for g in groups]
+    tags_by_group = tag_service.get_tags_for_card_groups(group_ids)
+    for group in groups:
+        group["tags"] = tags_by_group.get(str(group["group_id"]), [])
+    return groups
+
+
 def _uuid(value: uuid.UUID) -> str:
     return str(value)
 
@@ -53,7 +65,9 @@ def generate_entry_anki_id() -> uuid.UUID:
 
 
 def stable_card_uuid(entry_anki_id: uuid.UUID, direction: str) -> uuid.UUID:
-    normalized_direction = direction if direction in ("forward", "backward") else "forward"
+    normalized_direction = (
+        direction if direction in ("forward", "backward") else "forward"
+    )
     try:
         entry_uuid = uuid.UUID(str(entry_anki_id))
     except (TypeError, ValueError, AttributeError):
@@ -171,13 +185,13 @@ def list_recent_cards(
                 (_uuid(owner_id), limit),
             )
             group_rows = cur.fetchall()
-            
+
             if not group_rows:
                 return []
-            
+
             group_ids = [row["card_group_id"] for row in group_rows]
             placeholders = ",".join(["%s"] * len(group_ids))
-            
+
             # 2. Fetch full details for these groups
             cur.execute(
                 f"""
@@ -220,19 +234,23 @@ def list_recent_cards(
                 "audio_card": None,
                 "audio_side": None,
                 "prompt_templates": row["prompt_templates"],
-                "field_schema": deck_service.normalize_field_schema(row.get("field_schema")),
+                "field_schema": deck_service.normalize_field_schema(
+                    row.get("field_schema")
+                ),
             },
         )
         group["created_at"] = min(group["created_at"], row["created_at"])
         group["updated_at"] = max(group["updated_at"], row["updated_at"])
-        
+
         deck_info = {
             "target_language": row["target_language"],
             "prompt_templates": row["prompt_templates"],
             "field_schema": row["field_schema"],
         }
-        faces = _render_card(deck_info, row["payload"], row["direction"], native_language)
-        
+        faces = _render_card(
+            deck_info, row["payload"], row["direction"], native_language
+        )
+
         group["directions"].append(
             {
                 "id": row["id"],
@@ -249,15 +267,15 @@ def list_recent_cards(
         elif row["has_back_audio"] and not group["audio_card"]:
             group["audio_card"] = row["id"]
             group["audio_side"] = "back"
-            
+
     # Sort by the order we got from the first query (timestamp)
     ordered_groups = []
     group_map = {g["group_id"]: g for g in grouped.values()}
     for grid in group_ids:
         if grid in group_map:
             ordered_groups.append(group_map[grid])
-            
-    return ordered_groups
+
+    return _attach_tags_to_groups(ordered_groups)
 
 
 def list_cards_for_deck(
@@ -322,7 +340,7 @@ def list_cards_for_deck(
         key=lambda g: g["updated_at"],
         reverse=True,
     )
-    return ordered
+    return _attach_tags_to_groups(list(ordered))
 
 
 def list_cards_for_deck_paginated(
@@ -332,21 +350,41 @@ def list_cards_for_deck_paginated(
     page: int = 1,
     limit: int = 50,
     search_query: Optional[str] = None,
+    tag_names: Optional[List[str]] = None,
 ) -> dict:
     offset = (page - 1) * limit
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             # 1. Get paginated group IDs
-            query_params = [_uuid(owner_id), _uuid(deck["id"])]
+            query_params: list = [_uuid(owner_id), _uuid(deck["id"])]
             search_clause = ""
+            tag_clause = ""
+
             if search_query:
                 search_clause = "AND payload::text ILIKE %s"
                 query_params.append(f"%{search_query}%")
 
+            if tag_names:
+                # Only include groups that have ALL the requested tags
+                placeholders = ",".join(["%s"] * len(tag_names))
+                tag_clause = f"""
+                    AND card_group_id IN (
+                        SELECT ct.card_group_id
+                        FROM card_tags ct
+                        JOIN deck_tags dt ON dt.id = ct.tag_id
+                        WHERE dt.deck_id = %s AND dt.name IN ({placeholders})
+                        GROUP BY ct.card_group_id
+                        HAVING COUNT(DISTINCT dt.name) = %s
+                    )
+                """
+                query_params.append(_uuid(deck["id"]))
+                query_params.extend(tag_names)
+                query_params.append(len(tag_names))
+
             count_sql = f"""
                 SELECT COUNT(DISTINCT card_group_id) as total
                 FROM cards
-                WHERE owner_id = %s AND deck_id = %s {search_clause}
+                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause}
             """
             cur.execute(count_sql, tuple(query_params))
             total_groups = cur.fetchone()["total"]
@@ -354,25 +392,25 @@ def list_cards_for_deck_paginated(
             groups_sql = f"""
                 SELECT card_group_id, MAX(updated_at) as max_updated
                 FROM cards
-                WHERE owner_id = %s AND deck_id = %s {search_clause}
+                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause}
                 GROUP BY card_group_id
                 ORDER BY max_updated DESC
                 LIMIT %s OFFSET %s
             """
             cur.execute(groups_sql, tuple(query_params + [limit, offset]))
             group_rows = cur.fetchall()
-            
+
             if not group_rows:
                 return {
                     "cards": [],
                     "total": 0,
                     "page": page,
                     "limit": limit,
-                    "pages": 0
+                    "pages": 0,
                 }
 
             group_ids = [row["card_group_id"] for row in group_rows]
-            
+
             # 2. Fetch cards for these groups
             placeholders = ",".join(["%s"] * len(group_ids))
             cards_sql = f"""
@@ -389,7 +427,9 @@ def list_cards_for_deck_paginated(
                   AND c.card_group_id IN ({placeholders})
                 ORDER BY c.card_group_id, c.direction
             """
-            cur.execute(cards_sql, (_uuid(owner_id), *[_uuid(gid) for gid in group_ids]))
+            cur.execute(
+                cards_sql, (_uuid(owner_id), *[_uuid(gid) for gid in group_ids])
+            )
             rows = cur.fetchall()
 
     # Reuse the grouping logic
@@ -427,7 +467,7 @@ def list_cards_for_deck_paginated(
         elif row["has_back_audio"] and not group["audio_card"]:
             group["audio_card"] = row["id"]
             group["audio_side"] = "back"
-            
+
     # Sort by the order we got from the pagination query
     ordered_groups = []
     group_map = {g["group_id"]: g for g in grouped.values()}
@@ -435,13 +475,16 @@ def list_cards_for_deck_paginated(
         if grid in group_map:
             ordered_groups.append(group_map[grid])
 
+    _attach_tags_to_groups(ordered_groups)
+
     import math
+
     return {
         "cards": ordered_groups,
         "total": total_groups,
         "page": page,
         "limit": limit,
-        "pages": math.ceil(total_groups / limit) if limit > 0 else 1
+        "pages": math.ceil(total_groups / limit) if limit > 0 else 1,
     }
 
 
@@ -479,7 +522,9 @@ def get_cards_for_export(
                 "entry_anki_id": row.get("entry_anki_id"),
                 "front": faces["front"],
                 "back": faces["back"],
-                "front_audio": bytes(row["front_audio"]) if row["front_audio"] else None,
+                "front_audio": bytes(row["front_audio"])
+                if row["front_audio"]
+                else None,
                 "back_audio": bytes(row["back_audio"]) if row["back_audio"] else None,
                 "audio_filename": row.get("audio_filename"),
                 "updated_at": row.get("updated_at"),
@@ -521,7 +566,9 @@ def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
                 "payload": row["payload"],
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
-                "front_audio": bytes(row["front_audio"]) if row["front_audio"] else None,
+                "front_audio": bytes(row["front_audio"])
+                if row["front_audio"]
+                else None,
                 "back_audio": bytes(row["back_audio"]) if row["back_audio"] else None,
                 "audio_filename": row.get("audio_filename"),
             }
@@ -547,7 +594,8 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
                        d.name AS deck_name,
                        d.target_language,
                        d.field_schema,
-                       d.prompt_templates
+                       d.prompt_templates,
+                       d.tag_mode
                 FROM cards c
                 JOIN decks d ON d.id = c.deck_id
                 WHERE c.owner_id = %s AND c.card_group_id = %s
@@ -565,6 +613,7 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
         "target_language": rows[0]["target_language"],
         "field_schema": deck_service.normalize_field_schema(rows[0]["field_schema"]),
         "prompt_templates": rows[0]["prompt_templates"],
+        "tag_mode": rows[0].get("tag_mode", "off"),
     }
     payload = rows[0]["payload"]
     audio_bytes = None
@@ -630,7 +679,11 @@ def update_card_group(
                     set_clauses = ["payload = %s"]
                     if audio_bytes is not None:
                         set_clauses.extend(
-                            ["front_audio = %s", "back_audio = %s", "audio_filename = %s"]
+                            [
+                                "front_audio = %s",
+                                "back_audio = %s",
+                                "audio_filename = %s",
+                            ]
                         )
                         params.extend(
                             [
@@ -691,7 +744,9 @@ def delete_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> bool:
     return deleted
 
 
-def get_card_audio(owner_id: uuid.UUID, card_id: uuid.UUID, side: str) -> Optional[bytes]:
+def get_card_audio(
+    owner_id: uuid.UUID, card_id: uuid.UUID, side: str
+) -> Optional[bytes]:
     column = "front_audio" if side == "front" else "back_audio"
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -764,7 +819,12 @@ def _group_restore_payload(cards: List[dict]) -> List[dict]:
         direction = card.get("direction")
         if direction not in ("forward", "backward"):
             continue
-        entry_id = card.get("entry_anki_id") or card.get("card_group_id") or card.get("id") or uuid.uuid4()
+        entry_id = (
+            card.get("entry_anki_id")
+            or card.get("card_group_id")
+            or card.get("id")
+            or uuid.uuid4()
+        )
         entry_key = str(entry_id)
         bucket = grouped.setdefault(
             entry_key,
@@ -783,7 +843,9 @@ def _group_restore_payload(cards: List[dict]) -> List[dict]:
     return list(grouped.values())
 
 
-def _load_existing_entries(cur, owner_id: uuid.UUID, deck_id: uuid.UUID) -> Dict[str, dict]:
+def _load_existing_entries(
+    cur, owner_id: uuid.UUID, deck_id: uuid.UUID
+) -> Dict[str, dict]:
     cur.execute(
         """
         SELECT id,
@@ -829,7 +891,9 @@ def _apply_entry_restore(
         return 0
 
     if mode == "prefer_newest" and existing:
-        return _merge_entry(cur, owner_id, deck_id, entry_uuid, existing, entry["cards"])
+        return _merge_entry(
+            cur, owner_id, deck_id, entry_uuid, existing, entry["cards"]
+        )
 
     group_id = existing["group_id"] if existing else uuid.uuid4()
     if existing and mode != "replace":
@@ -883,7 +947,9 @@ def _merge_entry(
         if incoming_updated and (
             not existing_updated or incoming_updated > existing_updated
         ):
-            cur.execute("DELETE FROM cards WHERE id = %s", (_uuid(existing_card["id"]),))
+            cur.execute(
+                "DELETE FROM cards WHERE id = %s", (_uuid(existing_card["id"]),)
+            )
             new_card_id = _insert_entry_card(
                 cur,
                 owner_id,

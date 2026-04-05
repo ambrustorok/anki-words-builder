@@ -47,7 +47,9 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
     deck_identifier = _anki_id(f"deck-{deck_key}")
     model_identifier = _anki_id(f"model-{deck_key}")
 
-    anki_deck = genanki.Deck(deck_identifier, f"{deck['name']} ({deck['target_language']})")
+    anki_deck = genanki.Deck(
+        deck_identifier, f"{deck['name']} ({deck['target_language']})"
+    )
     model = genanki.Model(
         model_identifier,
         "Structured Two-Sided",
@@ -111,6 +113,7 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     f"{card['back']}{back_audio_tag}",
                 ],
                 guid=note_guid,
+                tags=card.get("tag_names") or [],
                 updated_at=card.get("updated_at"),
             )
             anki_deck.add_note(note)

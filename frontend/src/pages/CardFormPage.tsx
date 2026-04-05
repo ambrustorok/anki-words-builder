@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
-import type { DeckDetailResponse, DeckField } from "../types";
+import type { DeckDetailResponse, DeckField, DeckTag, TagMode } from "../types";
 
 interface CardGroupResponse {
   deck: DeckDetailResponse["deck"];
@@ -12,9 +12,12 @@ interface CardGroupResponse {
     id: string;
     payload: Record<string, string>;
     directions: string[];
+    tags?: DeckTag[];
   };
   audioPreview: string;
   audioPreferences: { voice: string; instructions: string };
+  deckTags?: DeckTag[];
+  tagMode?: TagMode;
 }
 
 interface CardOptionsResponse {
@@ -124,6 +127,13 @@ export function CardFormPage({ mode }: Props) {
   const [isProcessing, setIsProcessing] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Tag state
+  const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
+  const [tagMode, setTagMode] = useState<TagMode>("off");
+  const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [suggestedTagNames, setSuggestedTagNames] = useState<string[]>([]);
+  const [isSuggestingTags, setIsSuggestingTags] = useState(false);
+
   useEffect(() => {
     if (deck) {
       setPayload((prev) => {
@@ -157,8 +167,24 @@ export function CardFormPage({ mode }: Props) {
       setAudioPreferences(groupQuery.data.audioPreferences);
       setAudioEnabled(Boolean(groupQuery.data.deck.prompt_templates?.audio?.enabled ?? true));
       setDetailsUnlocked(true);
+      // Load tags
+      if (groupQuery.data.deckTags) setDeckTags(groupQuery.data.deckTags);
+      if (groupQuery.data.tagMode) setTagMode(groupQuery.data.tagMode);
+      if (groupQuery.data.group.tags) {
+        setSelectedTagIds(new Set(groupQuery.data.group.tags.map((t) => t.id)));
+      }
     }
   }, [groupQuery.data, mode]);
+
+  useEffect(() => {
+    if (mode === "create" && deck) {
+      // Fetch deck tags for create mode
+      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode }>(`/tags/decks/${deck.id}/tags`).then((resp) => {
+        setDeckTags(resp.tags);
+        setTagMode(resp.tag_mode || "off");
+      }).catch(() => {});
+    }
+  }, [deck?.id, mode]);
 
   useEffect(() => {
     if (!audioRef.current || !audioPreview) return;
@@ -209,6 +235,68 @@ export function CardFormPage({ mode }: Props) {
     persistStoredVoice(voice);
   };
 
+  const toggleTag = (tagId: string) => {
+    setSelectedTagIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(tagId)) next.delete(tagId);
+      else next.add(tagId);
+      return next;
+    });
+    // Remove from AI suggestions once explicitly toggled
+    setSuggestedTagNames((prev) => {
+      const tag = deckTags.find((t) => t.id === tagId);
+      if (!tag) return prev;
+      return prev.filter((n) => n !== tag.name);
+    });
+  };
+
+  const acceptSuggestedTag = (tagName: string) => {
+    const tag = deckTags.find((t) => t.name === tagName);
+    if (tag) {
+      setSelectedTagIds((prev) => new Set([...prev, tag.id]));
+    }
+    setSuggestedTagNames((prev) => prev.filter((n) => n !== tagName));
+  };
+
+  const dismissSuggestedTag = (tagName: string) => {
+    setSuggestedTagNames((prev) => prev.filter((n) => n !== tagName));
+  };
+
+  const runSuggestTags = async () => {
+    if (!deckIdForSubmit) return;
+    setIsSuggestingTags(true);
+    try {
+      const response = await apiFetch<any>("/cards/actions", {
+        method: "POST",
+        json: {
+          deckId: deckIdForSubmit,
+          groupId,
+          mode,
+          action: "suggest_tags",
+          payload,
+          directions,
+          audioPreview,
+          audioUrl,
+          audioPreferences,
+          inputMode: activeInputMode,
+          tagIds: [...selectedTagIds],
+        }
+      });
+      if (response.suggestedTagNames) {
+        // Only show suggestions for tags not already selected
+        const newSuggestions = (response.suggestedTagNames as string[]).filter(
+          (name) => !selectedTagIds.has(deckTags.find((t) => t.name === name)?.id ?? "")
+        );
+        setSuggestedTagNames(newSuggestions);
+        if (newSuggestions.length === 0) setMessage("No new tag suggestions.");
+      }
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setIsSuggestingTags(false);
+    }
+  };
+
   const runAction = async (action: string) => {
     if (!deckIdForSubmit) return;
     setMessage("");
@@ -230,7 +318,8 @@ export function CardFormPage({ mode }: Props) {
           audioPreview,
           audioUrl,
           audioPreferences,
-          inputMode: activeInputMode
+          inputMode: activeInputMode,
+          tagIds: [...selectedTagIds],
         }
       });
       if (response.status === "saved") {
@@ -257,6 +346,13 @@ export function CardFormPage({ mode }: Props) {
       }
       if (processingAction) {
         setDetailsUnlocked(true);
+        // AI auto mode: show suggested tags from populate_all response
+        if (response.suggestedTagNames && tagMode === "auto") {
+          const newSuggestions = (response.suggestedTagNames as string[]).filter(
+            (name) => !selectedTagIds.has(deckTags.find((t) => t.name === name)?.id ?? "")
+          );
+          setSuggestedTagNames(newSuggestions);
+        }
       }
       setMessage(response.message ?? "Done");
     } catch (err) {
@@ -547,6 +643,107 @@ export function CardFormPage({ mode }: Props) {
             </section>
           )}
         </>
+      )}
+
+      {/* ------------------------------------------------------------------ */}
+      {/* Tags section — only shown when tagMode is not 'off'                */}
+      {/* ------------------------------------------------------------------ */}
+      {tagMode !== "off" && deckTags.length > 0 && (
+        <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Tags</h2>
+            {tagMode === "auto" && (
+              <button
+                type="button"
+                onClick={runSuggestTags}
+                disabled={isSuggestingTags}
+                className="inline-flex items-center gap-2 rounded-full border border-slate-300 px-4 py-1.5 text-sm text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
+              >
+                {isSuggestingTags && (
+                  <span className="h-3 w-3 animate-spin rounded-full border-2 border-slate-400 border-t-slate-700" />
+                )}
+                Suggest tags
+              </button>
+            )}
+          </div>
+
+          {/* AI suggestion chips (dashed outline, not yet accepted) */}
+          {suggestedTagNames.length > 0 && (
+            <div className="mt-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                AI suggestions — click to accept
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {suggestedTagNames.map((name) => {
+                  const tag = deckTags.find((t) => t.name === name);
+                  const color = tag?.color ?? "#6366f1";
+                  return (
+                    <div key={name} className="flex items-center gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => acceptSuggestedTag(name)}
+                        className="rounded-full border-2 border-dashed px-3 py-1 text-sm font-medium transition-all hover:opacity-100"
+                        style={{ borderColor: color, color, opacity: 0.75 }}
+                        title="Click to accept this suggestion"
+                      >
+                        {name}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => dismissSuggestedTag(name)}
+                        className="text-slate-400 hover:text-red-500 text-base leading-none"
+                        title="Dismiss"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Selected / available tags grouped by category */}
+          {(() => {
+            const byCategory = deckTags.reduce<Record<string, DeckTag[]>>((acc, tag) => {
+              const cat = tag.category || "Uncategorized";
+              (acc[cat] = acc[cat] || []).push(tag);
+              return acc;
+            }, {});
+            return (
+              <div className="mt-4 space-y-3">
+                {Object.entries(byCategory).map(([category, tags]) => (
+                  <div key={category}>
+                    <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                      {category}
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {tags.map((tag) => {
+                        const isSelected = selectedTagIds.has(tag.id);
+                        return (
+                          <button
+                            key={tag.id}
+                            type="button"
+                            onClick={() => toggleTag(tag.id)}
+                            className="rounded-full border-2 px-3 py-1 text-sm font-medium transition-all"
+                            style={
+                              isSelected
+                                ? { borderColor: tag.color, backgroundColor: tag.color + "33", color: tag.color }
+                                : { borderColor: tag.color + "66", color: tag.color + "99" }
+                            }
+                            title={isSelected ? "Remove tag" : "Add tag"}
+                          >
+                            {tag.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
+        </section>
       )}
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">

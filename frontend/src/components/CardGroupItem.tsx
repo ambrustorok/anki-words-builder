@@ -1,13 +1,25 @@
 import { Link, useNavigate } from "react-router-dom";
-import { CardGroup } from "../types";
+import { CardGroup, DeckTag } from "../types";
 
 interface CardGroupItemProps {
     group: CardGroup;
     onDelete: (groupId: string) => void;
 }
 
+function TagChip({ tag }: { tag: DeckTag }) {
+    return (
+        <span
+            className="rounded-full border px-2 py-0.5 text-xs font-medium"
+            style={{ borderColor: tag.color, color: tag.color, backgroundColor: tag.color + "1a" }}
+        >
+            {tag.name}
+        </span>
+    );
+}
+
 export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
     const navigate = useNavigate();
+    const tags = group.tags ?? [];
 
     return (
         <article
@@ -24,7 +36,7 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
             className="group rounded-3xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/70"
         >
             <div className="flex flex-wrap items-center gap-2 text-sm text-slate-500 dark:text-slate-400">
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1">
                     {group.directions.some(d => d.direction === 'forward') && (
                         <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600 dark:bg-slate-800 dark:text-slate-300">
                             Forward
@@ -35,6 +47,9 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                             Backward
                         </span>
                     )}
+                    {tags.map((tag) => (
+                        <TagChip key={tag.id} tag={tag} />
+                    ))}
                 </div>
                 <span className="text-slate-300 dark:text-slate-700">|</span>
                 <span>Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>

@@ -9,6 +9,7 @@ from ..services import cards as card_service
 from ..services import decks as deck_service
 from ..services import exporter as export_service
 from ..services import backups as backup_service
+from ..services import tags as tag_service
 from ..settings import TARGET_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid
 
@@ -42,7 +43,9 @@ class DeckPayload(BaseModel):
     audio_instructions: Optional[str] = Field(None, alias="audioInstructions")
     audio_enabled: Optional[bool] = Field(True, alias="audioEnabled")
     generation_prompts: Optional[dict] = Field(None, alias="generationPrompts")
-    card_templates: Optional["CardTemplatesPayload"] = Field(None, alias="cardTemplates")
+    card_templates: Optional["CardTemplatesPayload"] = Field(
+        None, alias="cardTemplates"
+    )
 
 
 class CardFaceTemplate(BaseModel):
@@ -73,7 +76,9 @@ def _card_templates_to_dict(payload: Optional[CardTemplatesPayload]) -> Optional
     return data or None
 
 
-def _build_prompt_templates(generation_overrides: Optional[dict], card_overrides: Optional[dict]) -> Optional[dict]:
+def _build_prompt_templates(
+    generation_overrides: Optional[dict], card_overrides: Optional[dict]
+) -> Optional[dict]:
     if not generation_overrides and not card_overrides:
         return None
     templates = deck_service.default_prompt_templates()
@@ -159,19 +164,21 @@ def deck_detail(deck_id: str, user=Depends(get_current_user)):
         user["id"], deck, user.get("native_language"), page=1, limit=5
     )
     generation_prompts = deck_service.get_generation_prompts(deck)
-    
+
     # We still want total metrics
     entry_count = paginated["total"]
-    
+
     # Get total count of individual card faces
     card_count = card_service.count_cards_in_deck(user["id"], deck["id"])
 
     last_modified = deck.get("updated_at")
-    # We can use the latest updated_at from the top 5 cards as a proxy if deeper validtion is needed, 
+    # We can use the latest updated_at from the top 5 cards as a proxy if deeper validtion is needed,
     # but the deck's updated_at should be sufficient if we maintain it properly.
     if paginated["cards"]:
         latest_card_update = max(c["updated_at"] for c in paginated["cards"])
-        if not last_modified or (latest_card_update and latest_card_update > last_modified):
+        if not last_modified or (
+            latest_card_update and latest_card_update > last_modified
+        ):
             last_modified = latest_card_update
 
     return {
@@ -179,32 +186,39 @@ def deck_detail(deck_id: str, user=Depends(get_current_user)):
         "cards": paginated["cards"],
         "generationPrompts": generation_prompts,
         "entryCount": entry_count,
-        "cardCount": card_count, 
+        "cardCount": card_count,
         "lastModified": last_modified,
+        "tagMode": deck.get("tag_mode", "off"),
     }
 
 
 @router.get("/{deck_id}/cards")
 def list_deck_cards(
-    deck_id: str, 
-    page: int = 1, 
-    limit: int = 50, 
+    deck_id: str,
+    page: int = 1,
+    limit: int = 50,
     q: Optional[str] = None,
-    user=Depends(get_current_user)
+    tags: Optional[List[str]] = None,
+    user=Depends(get_current_user),
 ):
     deck_uuid = parse_uuid(deck_id, entity="Deck")
     deck = deck_service.get_deck(deck_uuid, user["id"])
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
-        
+
     result = card_service.list_cards_for_deck_paginated(
-        user["id"], 
-        deck, 
-        user.get("native_language"), 
-        page=page, 
-        limit=limit, 
-        search_query=q
+        user["id"],
+        deck,
+        user.get("native_language"),
+        page=page,
+        limit=limit,
+        search_query=q,
+        tag_names=tags or [],
     )
+    # Also return the deck's tag definitions so the UI can render filter chips
+    deck_tags = tag_service.list_deck_tags(deck_uuid)
+    result["deckTags"] = deck_tags
+    result["tagMode"] = deck.get("tag_mode", "off")
     return result
 
 
@@ -257,14 +271,19 @@ def export_deck(deck_id: str, user=Depends(get_current_user)):
     if not cards:
         raise HTTPException(status_code=400, detail="No cards to export yet.")
 
+    # Attach tag names to each card for export — one lookup per group
+    group_ids = list({c["card_group_id"] for c in cards})
+    tags_by_group = tag_service.get_tags_for_card_groups(group_ids)
+    for card in cards:
+        gid = str(card["card_group_id"])
+        card["tag_names"] = [t["name"] for t in tags_by_group.get(gid, [])]
+
     binary = export_service.export_deck(deck, cards)
     filename_slug = deck["name"].lower().replace(" ", "_")
     return StreamingResponse(
         io.BytesIO(binary),
         media_type="application/vnd.anki",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename_slug}.apkg"'
-        },
+        headers={"Content-Disposition": f'attachment; filename="{filename_slug}.apkg"'},
     )
 
 
