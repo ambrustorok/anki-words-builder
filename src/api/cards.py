@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from ..services import api_keys as api_key_service
 from ..services import cards as card_service
@@ -40,6 +40,10 @@ class AudioPreferences(BaseModel):
     instructions: Optional[str] = None
 
 
+_MAX_FIELD_LEN = 4_000  # characters per payload field
+_MAX_INSTRUCTIONS_LEN = 2_000
+
+
 class CardActionRequest(BaseModel):
     deck_id: str = Field(..., alias="deckId")
     group_id: Optional[str] = Field(None, alias="groupId")
@@ -57,12 +61,33 @@ class CardActionRequest(BaseModel):
     payload: Dict[str, str]
     directions: List[str] = Field(default_factory=lambda: ["forward", "backward"])
     audio_preview: Optional[str] = Field("", alias="audioPreview")
-    audio_url: Optional[str] = Field(None, alias="audioUrl")
+    audio_url: Optional[str] = Field(None, alias="audioUrl", max_length=2048)
     audio_preferences: Optional[AudioPreferences] = Field(
         None, alias="audioPreferences"
     )
     input_mode: Literal["foreign", "native"] = Field("foreign", alias="inputMode")
     tag_ids: List[str] = Field(default_factory=list, alias="tagIds")
+
+    @field_validator("payload")
+    @classmethod
+    def _validate_payload(cls, v: Dict[str, str]) -> Dict[str, str]:
+        for key, value in v.items():
+            if len(str(value)) > _MAX_FIELD_LEN:
+                raise ValueError(
+                    f"Field '{key}' exceeds the maximum length of {_MAX_FIELD_LEN} characters."
+                )
+        return v
+
+    @field_validator("audio_preferences")
+    @classmethod
+    def _validate_audio_prefs(
+        cls, v: Optional[AudioPreferences]
+    ) -> Optional[AudioPreferences]:
+        if v and v.instructions and len(v.instructions) > _MAX_INSTRUCTIONS_LEN:
+            raise ValueError(
+                f"Audio instructions exceed the maximum length of {_MAX_INSTRUCTIONS_LEN} characters."
+            )
+        return v
 
 
 def _save_card_tags(group_id, tag_ids: List[str]) -> None:

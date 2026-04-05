@@ -207,6 +207,8 @@ def bulk_tag_deck(deck_id: str, user=Depends(get_current_user)):
             status_code=400, detail="No tags defined for this deck yet."
         )
 
+    BULK_TAG_CARD_LIMIT = 500
+
     # Get all card groups (raw payload, no rendering needed)
     from ..db.core import get_connection
     from psycopg2.extras import RealDictCursor
@@ -221,10 +223,17 @@ def bulk_tag_deck(deck_id: str, user=Depends(get_current_user)):
                 FROM cards
                 WHERE owner_id = %s AND deck_id = %s
                 ORDER BY card_group_id, created_at ASC
+                LIMIT %s
                 """,
-                (str(user["id"]), str(deck_uuid)),
+                (str(user["id"]), str(deck_uuid), BULK_TAG_CARD_LIMIT),
             )
             groups = cur.fetchall()
+
+    if len(groups) >= BULK_TAG_CARD_LIMIT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Bulk tagging is limited to {BULK_TAG_CARD_LIMIT} cards per request. Split into smaller batches.",
+        )
 
     processed = 0
     skipped = 0

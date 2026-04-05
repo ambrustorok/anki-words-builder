@@ -34,12 +34,26 @@ DEFAULT_PROMPTS = {
 }
 
 
+def _sanitize_context_value(value: str) -> str:
+    """Strip curly braces from user-supplied values to prevent format-string injection."""
+    return value.replace("{", "{{").replace("}", "}}")
+
+
 def _format_prompt(
     prompt_cfg: Dict[str, str], context: Dict[str, str]
 ) -> Dict[str, str]:
     system_prompt = prompt_cfg.get("system") or DEFAULT_PROMPTS["translation"]["system"]
     user_template = prompt_cfg.get("user") or DEFAULT_PROMPTS["translation"]["user"]
-    user_prompt = user_template.format(**context)
+    # Escape curly braces in user-controlled values so they can't break format() or
+    # inject extra template variables.
+    safe_context = {k: _sanitize_context_value(str(v)) for k, v in context.items()}
+    try:
+        user_prompt = user_template.format(**safe_context)
+    except KeyError as exc:
+        raise ValueError(
+            f"Generation prompt template references unknown variable {exc}. "
+            "Check the deck's generation prompt configuration."
+        ) from exc
     return {"system": system_prompt, "user": user_prompt}
 
 
