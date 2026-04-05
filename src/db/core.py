@@ -222,6 +222,10 @@ def init_db():
             cur.execute(
                 "ALTER TABLE decks ADD COLUMN IF NOT EXISTS tag_mode TEXT NOT NULL DEFAULT 'off'"
             )
+            # Whether multiple tags can be selected simultaneously (default true)
+            cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS tag_multi BOOLEAN NOT NULL DEFAULT TRUE"
+            )
 
             # App-level settings
             cur.execute(

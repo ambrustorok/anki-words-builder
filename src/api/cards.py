@@ -718,6 +718,7 @@ def get_card_group(group_id: str, user=Depends(get_current_user)):
         "audioPreferences": _default_audio_preferences(deck),
         "deckTags": deck_tags,
         "tagMode": tag_service.get_deck_tag_mode(deck),
+        "tagMulti": bool(deck.get("tag_multi", True)),
     }
 
 

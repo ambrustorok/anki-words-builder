@@ -116,6 +116,7 @@ export function DeckEditorPage({ mode }: Props) {
   const [deleting, setDeleting] = useState(false);
   // Tag state
   const [tagMode, setTagMode] = useState<TagMode>("off");
+  const [tagMulti, setTagMulti] = useState(true);
   const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [newTagCategory, setNewTagCategory] = useState("");
@@ -193,9 +194,10 @@ export function DeckEditorPage({ mode }: Props) {
       setCardTemplates(mergedCardTemplates);
       // Load tags
       if (deckData.tagMode) setTagMode(deckData.tagMode);
-      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode }>(`/tags/decks/${deckIdentifier}/tags`).then((resp) => {
+      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode; tag_multi: boolean }>(`/tags/decks/${deckIdentifier}/tags`).then((resp) => {
         setDeckTags(resp.tags);
         setTagMode(resp.tag_mode || deckData.tagMode || "off");
+        setTagMulti(resp.tag_multi !== false);
       }).catch(() => {});
     }
   }, [deckData, mode]);
@@ -241,7 +243,17 @@ export function DeckEditorPage({ mode }: Props) {
     try {
       await apiFetch(`/tags/decks/${deckId}/tag-mode`, { method: "PUT", json: { mode: nextMode } });
     } catch {
-      // non-critical — mode is saved on submit too via deck update
+      // non-critical
+    }
+  };
+
+  const handleTagMultiChange = async (next: boolean) => {
+    setTagMulti(next);
+    if (!deckId) return;
+    try {
+      await apiFetch(`/tags/decks/${deckId}/tag-multi`, { method: "PUT", json: { multi: next } });
+    } catch {
+      // non-critical
     }
   };
 
@@ -555,6 +567,18 @@ export function DeckEditorPage({ mode }: Props) {
               {tagMode === "manual"
                 ? "Tags are shown on the card form. You assign them manually when creating or editing cards."
                 : "Tags are suggested automatically by AI when you process a card, and you can accept or reject each suggestion."}
+            <label className="mt-2 flex items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
+              <input
+                type="checkbox"
+                checked={tagMulti}
+                onChange={(e) => handleTagMultiChange(e.target.checked)}
+                className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+              />
+              Allow multiple tags per card
+              <span className="text-slate-400 dark:text-slate-500">
+                {tagMulti ? "(current: multiple — click to allow one tag at a time)" : "(current: one — click to allow multiple tags)"}
+              </span>
+            </label>
             </p>
 
             {/* Existing tags grouped by category */}

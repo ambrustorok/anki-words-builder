@@ -201,6 +201,7 @@ def deck_detail(deck_id: str, user=Depends(get_current_user)):
         "cardCount": card_count,
         "lastModified": last_modified,
         "tagMode": deck.get("tag_mode", "off"),
+        "tagMulti": bool(deck.get("tag_multi", True)),
     }
 
 
@@ -231,6 +232,7 @@ def list_deck_cards(
     deck_tags = tag_service.list_deck_tags(deck_uuid)
     result["deckTags"] = deck_tags
     result["tagMode"] = deck.get("tag_mode", "off")
+    result["tagMulti"] = bool(deck.get("tag_multi", True))
     result["isFiltered"] = bool(tags or q)
     return result
 

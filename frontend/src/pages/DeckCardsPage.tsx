@@ -14,6 +14,7 @@ interface DeckCardsResponse {
     pages: number;
     deckTags?: DeckTag[];
     tagMode?: TagMode;
+    tagMulti?: boolean;
     isFiltered?: boolean;
 }
 
@@ -64,8 +65,14 @@ export function DeckCardsPage() {
         refetch();
     };
 
+    const tagMulti = data?.tagMulti !== false;
+
     const toggleTagFilter = (tagName: string) => {
         setActiveTagNames((prev) => {
+            if (!tagMulti) {
+                // Single-select: clicking active tag clears it, clicking another replaces
+                return prev.has(tagName) ? new Set() : new Set([tagName]);
+            }
             const next = new Set(prev);
             if (next.has(tagName)) next.delete(tagName);
             else next.add(tagName);

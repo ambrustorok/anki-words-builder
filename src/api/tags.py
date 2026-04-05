@@ -45,6 +45,10 @@ class TagModeRequest(BaseModel):
     mode: str  # 'off' | 'manual' | 'auto'
 
 
+class TagMultiRequest(BaseModel):
+    multi: bool
+
+
 # ---------------------------------------------------------------------------
 # Deck-tag definition routes
 # ---------------------------------------------------------------------------
@@ -57,7 +61,11 @@ def list_deck_tags(deck_id: str, user=Depends(get_current_user)):
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
     tags = tag_service.list_deck_tags(deck_uuid)
-    return {"tags": tags, "tag_mode": deck.get("tag_mode", "off")}
+    return {
+        "tags": tags,
+        "tag_mode": deck.get("tag_mode", "off"),
+        "tag_multi": deck.get("tag_multi", True),
+    }
 
 
 @router.post("/decks/{deck_id}/tags")
@@ -114,6 +122,17 @@ def set_deck_tag_mode(
         )
     deck_service.set_deck_tag_mode(deck_uuid, user["id"], mode)
     return {"tag_mode": mode}
+
+
+@router.put("/decks/{deck_id}/tag-multi")
+def set_deck_tag_multi(
+    deck_id: str, body: TagMultiRequest, user=Depends(get_current_user)
+):
+    deck_uuid = parse_uuid(deck_id, entity="Deck")
+    if not deck_service.get_deck(deck_uuid, user["id"]):
+        raise HTTPException(status_code=404, detail="Deck not found.")
+    deck_service.set_deck_tag_multi(deck_uuid, user["id"], body.multi)
+    return {"tag_multi": body.multi}
 
 
 @router.patch("/{tag_id}")

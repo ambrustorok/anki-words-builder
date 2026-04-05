@@ -18,6 +18,7 @@ interface CardGroupResponse {
   audioPreferences: { voice: string; instructions: string };
   deckTags?: DeckTag[];
   tagMode?: TagMode;
+  tagMulti?: boolean;
 }
 
 interface CardOptionsResponse {
@@ -141,6 +142,7 @@ export function CardFormPage({ mode }: Props) {
   // Tag state
   const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
   const [tagMode, setTagMode] = useState<TagMode>("off");
+  const [tagMulti, setTagMulti] = useState(true);
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
   const [suggestedTagNames, setSuggestedTagNames] = useState<string[]>([]);
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
@@ -181,6 +183,7 @@ export function CardFormPage({ mode }: Props) {
       // Load tags
       if (groupQuery.data.deckTags) setDeckTags(groupQuery.data.deckTags);
       if (groupQuery.data.tagMode) setTagMode(groupQuery.data.tagMode);
+      setTagMulti(groupQuery.data.tagMulti !== false);
       if (groupQuery.data.group.tags) {
         setSelectedTagIds(new Set(groupQuery.data.group.tags.map((t) => t.id)));
       }
@@ -190,9 +193,10 @@ export function CardFormPage({ mode }: Props) {
   useEffect(() => {
     if (mode === "create" && deck) {
       // Fetch deck tags for create mode
-      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode }>(`/tags/decks/${deck.id}/tags`).then((resp) => {
+      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode; tag_multi: boolean }>(`/tags/decks/${deck.id}/tags`).then((resp) => {
         setDeckTags(resp.tags);
         setTagMode(resp.tag_mode || "off");
+        setTagMulti(resp.tag_multi !== false);
       }).catch(() => {});
     }
   }, [deck?.id, mode]);
@@ -248,6 +252,10 @@ export function CardFormPage({ mode }: Props) {
 
   const toggleTag = (tagId: string) => {
     setSelectedTagIds((prev) => {
+      if (!tagMulti) {
+        // Single-select: clicking the active tag deselects it, clicking another replaces
+        return prev.has(tagId) ? new Set() : new Set([tagId]);
+      }
       const next = new Set(prev);
       if (next.has(tagId)) next.delete(tagId);
       else next.add(tagId);
@@ -264,7 +272,9 @@ export function CardFormPage({ mode }: Props) {
   const acceptSuggestedTag = (tagName: string) => {
     const tag = deckTags.find((t) => t.name === tagName);
     if (tag) {
-      setSelectedTagIds((prev) => new Set([...prev, tag.id]));
+      setSelectedTagIds((prev) =>
+        tagMulti ? new Set([...prev, tag.id]) : new Set([tag.id])
+      );
     }
     setSuggestedTagNames((prev) => prev.filter((n) => n !== tagName));
   };

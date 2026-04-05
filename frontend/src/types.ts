@@ -79,4 +79,5 @@ export interface DeckDetailResponse {
   lastModified?: string;
   generationPrompts: Record<string, unknown>;
   tagMode?: TagMode;
+  tagMulti?: boolean;
 }
