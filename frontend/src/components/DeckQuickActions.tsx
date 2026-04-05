@@ -10,7 +10,7 @@ interface Props {
 
 export function DeckQuickActions({ deckId, className = "", variant = "inline" }: Props) {
   const containerClasses = [
-    "flex flex-wrap gap-2",
+    "flex flex-wrap gap-1.5",
     variant === "stacked" ? "mt-3 border-t border-slate-100 pt-3 dark:border-slate-800" : "",
     className
   ]
@@ -18,7 +18,7 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
     .join(" ");
 
   const iconButton =
-    "inline-flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-400 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500";
+    "inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200 text-slate-500 transition hover:border-slate-400 hover:text-slate-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-700 dark:text-slate-200 dark:hover:border-slate-500";
 
   const actions = [
     { label: "Add card", to: `/cards/new/${deckId}`, icon: IconPlus },
