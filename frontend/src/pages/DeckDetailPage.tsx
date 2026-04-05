@@ -48,6 +48,9 @@ export function DeckDetailPage() {
             <Link className="rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center" to={`/cards/new/${deck.id}`}>
               Add card
             </Link>
+            <Link className="rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand min-h-[44px] flex items-center dark:border-brand/30 dark:bg-brand/5" to={`/decks/${deck.id}/generate`}>
+              Generate cards
+            </Link>
             <Link className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center" to={`/decks/${deck.id}/edit`}>
               Edit
             </Link>

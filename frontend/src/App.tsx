@@ -14,6 +14,7 @@ import { DeckEditorPage } from "./pages/DeckEditorPage";
 import { CardCreatePage } from "./pages/CardCreatePage";
 import { CardEditPage } from "./pages/CardEditPage";
 import { DeckCardsPage } from "./pages/DeckCardsPage";
+import { GenerateCardsPage } from "./pages/GenerateCardsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
 import { AdminUserDetailPage } from "./pages/AdminUserDetailPage";
 import { HelpPage } from "./pages/HelpPage";
@@ -54,6 +55,7 @@ function AppRoutes() {
         <Route path="/decks/new" element={<DeckEditorPage mode="create" />} />
         <Route path="/decks/:deckId" element={<DeckDetailPage />} />
         <Route path="/decks/:deckId/cards" element={<DeckCardsPage />} />
+        <Route path="/decks/:deckId/generate" element={<GenerateCardsPage />} />
         <Route path="/decks/:deckId/edit" element={<DeckEditorPage mode="edit" />} />
         <Route path="/help" element={<HelpPage />} />
         <Route path="/cards/new/:deckId" element={<CardCreatePage />} />

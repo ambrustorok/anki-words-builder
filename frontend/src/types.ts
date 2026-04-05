@@ -73,6 +73,36 @@ export interface CardGroup {
   tags?: DeckTag[];
 }
 
+// ---------------------------------------------------------------------------
+// Bulk generation
+// ---------------------------------------------------------------------------
+
+/** A candidate card returned from /generate/preview — lives only in frontend state */
+export interface GenerationCandidate {
+  ephemeral_id: string;
+  foreign_phrase: string;
+  native_phrase: string;
+  example_sentence: string;
+  dictionary_entry?: string;
+  suggested_tag_names: string[];
+  suggested_tag_ids: string[];
+  is_duplicate: boolean;
+  is_possible_duplicate: boolean;
+  // UI state (not from API)
+  accepted: boolean;
+  editing: boolean;
+  /** Tag IDs the user has selected (starts as suggested_tag_ids) */
+  tagIds: string[];
+  /** Editable payload fields */
+  payload: Record<string, string>;
+}
+
+export interface GenerationPreviewResponse {
+  candidates: Omit<GenerationCandidate, "accepted" | "editing" | "tagIds" | "payload">[];
+  totalGenerated: number;
+  steps: string[];
+}
+
 export interface DeckDetailResponse {
   deck: Deck;
   cards: CardGroup[];
