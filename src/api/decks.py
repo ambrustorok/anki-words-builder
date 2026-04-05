@@ -210,7 +210,7 @@ def list_deck_cards(
     page: int = Query(1, ge=1),
     limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = Query(None, max_length=200),
-    tags: Optional[List[str]] = None,
+    tags: Optional[List[str]] = Query(None),
     user=Depends(get_current_user),
 ):
     deck_uuid = parse_uuid(deck_id, entity="Deck")
@@ -231,6 +231,7 @@ def list_deck_cards(
     deck_tags = tag_service.list_deck_tags(deck_uuid)
     result["deckTags"] = deck_tags
     result["tagMode"] = deck.get("tag_mode", "off")
+    result["isFiltered"] = bool(tags or q)
     return result
 
 

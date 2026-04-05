@@ -14,6 +14,7 @@ interface DeckCardsResponse {
     pages: number;
     deckTags?: DeckTag[];
     tagMode?: TagMode;
+    isFiltered?: boolean;
 }
 
 export function DeckCardsPage() {
@@ -179,6 +180,11 @@ export function DeckCardsPage() {
                         >
                             Clear filter
                         </button>
+                    )}
+                    {data?.isFiltered && (
+                        <span className="text-xs text-slate-400 dark:text-slate-500">
+                            {data.total} {data.total === 1 ? "card" : "cards"} match
+                        </span>
                     )}
                 </div>
             )}
