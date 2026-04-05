@@ -152,15 +152,11 @@ export function DashboardPage() {
                   role="button"
                   tabIndex={0}
                   aria-label="Edit card"
-                  onClick={() => navigate(`/decks/${group.deck_id}/cards`)} // Navigate to card list or specific edit if possible. 
-                  // Note: User asked to manage entries, linking to the deck card list is safest or we can link to edit.
-                  // For now let's link to the edit page of the group if we had a direct route, but we have /decks/:id/cards.
-                  // Wait, earlier code linked to `/cards/${card.card_group_id}/edit`. I should check if that route exists.
-                  // Assuming it does or will conform to that.
+                  onClick={() => navigate(`/cards/${group.group_id}/edit`)}
                   onKeyDown={(event) => {
                     if (event.key === "Enter" || event.key === " ") {
                       event.preventDefault();
-                      navigate(`/decks/${group.deck_id}/cards`);
+                      navigate(`/cards/${group.group_id}/edit`);
                     }
                   }}
                   className="group rounded-2xl border border-slate-100 bg-slate-50 p-4 transition hover:-translate-y-0.5 hover:cursor-pointer hover:border-brand/50 hover:bg-white hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand dark:border-slate-800 dark:bg-slate-900/60"
