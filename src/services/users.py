@@ -1,9 +1,12 @@
+import re
 import uuid
 from typing import Iterable, List, Optional
 
 from psycopg2.extras import RealDictCursor
 
 from ..db.core import get_connection
+
+_EMAIL_RE = re.compile(r"^[^@\s]{1,64}@[^@\s]{1,253}\.[^@.\s]{2,}$")
 
 
 def _uuid(value: uuid.UUID) -> str:
@@ -123,7 +126,7 @@ def list_user_emails(user_id: uuid.UUID) -> List[dict]:
 
 def add_user_email(user_id: uuid.UUID, email: str, *, make_primary: bool = False):
     normalized = (email or "").strip().lower()
-    if not normalized or "@" not in normalized:
+    if not normalized or not _EMAIL_RE.match(normalized):
         raise ValueError("Enter a valid email address.")
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -271,7 +274,7 @@ def get_user_by_email(email: str) -> Optional[dict]:
 
 def update_user_email(email_id: uuid.UUID, new_email: str):
     normalized = (new_email or "").strip().lower()
-    if not normalized or "@" not in normalized:
+    if not normalized or not _EMAIL_RE.match(normalized):
         raise ValueError("Enter a valid email address.")
     with get_connection() as conn:
         with conn.cursor() as cur:

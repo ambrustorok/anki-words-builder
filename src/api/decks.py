@@ -1,7 +1,7 @@
 import io
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, File, Form, Query, UploadFile
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -14,6 +14,8 @@ from ..settings import TARGET_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid
 
 router = APIRouter(prefix="/decks")
+
+MAX_BACKUP_BYTES = 50 * 1024 * 1024  # 50 MB
 
 
 class DeckField(BaseModel):
@@ -59,6 +61,16 @@ class CardTemplatesPayload(BaseModel):
 
     class Config:
         arbitrary_types_allowed = True
+
+
+def _safe_filename(name: str) -> str:
+    """Produce a percent-encoded, header-safe filename slug from a deck name."""
+    import re
+    import urllib.parse
+
+    slug = re.sub(r"[^\w\s-]", "", name.lower()).strip()
+    slug = re.sub(r"[\s_-]+", "_", slug) or "deck"
+    return urllib.parse.quote(slug, safe="")
 
 
 def _ensure_native_language(user: dict):
@@ -195,9 +207,9 @@ def deck_detail(deck_id: str, user=Depends(get_current_user)):
 @router.get("/{deck_id}/cards")
 def list_deck_cards(
     deck_id: str,
-    page: int = 1,
-    limit: int = 50,
-    q: Optional[str] = None,
+    page: int = Query(1, ge=1),
+    limit: int = Query(50, ge=1, le=200),
+    q: Optional[str] = Query(None, max_length=200),
     tags: Optional[List[str]] = None,
     user=Depends(get_current_user),
 ):
@@ -279,11 +291,31 @@ def export_deck(deck_id: str, user=Depends(get_current_user)):
         card["tag_names"] = [t["name"] for t in tags_by_group.get(gid, [])]
 
     binary = export_service.export_deck(deck, cards)
-    filename_slug = deck["name"].lower().replace(" ", "_")
+    filename_slug = _safe_filename(deck["name"])
     return StreamingResponse(
         io.BytesIO(binary),
         media_type="application/vnd.anki",
-        headers={"Content-Disposition": f'attachment; filename="{filename_slug}.apkg"'},
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename_slug}.apkg"
+        },
+    )
+
+
+@router.get("/{deck_id}/backup")
+def backup_deck(deck_id: str, user=Depends(get_current_user)):
+    deck_uuid = parse_uuid(deck_id, entity="Deck")
+    deck = deck_service.get_deck(deck_uuid, user["id"])
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found.")
+    cards = card_service.get_cards_for_backup(user["id"], deck_uuid)
+    archive = backup_service.create_backup_archive(deck, cards)
+    filename_slug = _safe_filename(deck["name"])
+    return StreamingResponse(
+        io.BytesIO(archive),
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f"attachment; filename*=UTF-8''{filename_slug}.awdeck"
+        },
     )
 
 
@@ -311,7 +343,11 @@ async def import_deck(
     policy: Optional[str] = Form(None),
     user=Depends(get_current_user),
 ):
-    contents = await file.read()
+    contents = await file.read(MAX_BACKUP_BYTES + 1)
+    if len(contents) > MAX_BACKUP_BYTES:
+        raise HTTPException(
+            status_code=413, detail="Backup file is too large (limit: 50 MB)."
+        )
     try:
         deck = backup_service.import_backup(user["id"], contents, policy=policy)
     except backup_service.DeckImportConflict as conflict:

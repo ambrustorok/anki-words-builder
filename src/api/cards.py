@@ -156,14 +156,49 @@ def _convert_audio_bytes_to_mp3(
     return output.getvalue()
 
 
+def _is_private_host(hostname: str) -> bool:
+    """Return True if the hostname resolves to a private/loopback/link-local address."""
+    import ipaddress
+    import socket
+
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return False  # can't resolve — let httpx fail naturally
+    for info in infos:
+        addr_str = info[4][0]
+        try:
+            addr = ipaddress.ip_address(addr_str)
+            if (
+                addr.is_private
+                or addr.is_loopback
+                or addr.is_link_local
+                or addr.is_reserved
+            ):
+                return True
+        except ValueError:
+            continue
+    return False
+
+
 async def _download_audio_from_url(url: str) -> bytes:
+    import urllib.parse
+
     normalized = (url or "").strip()
     if not normalized:
         raise ValueError("Enter an audio URL to fetch.")
     if not normalized.lower().startswith(("http://", "https://")):
         raise ValueError("Audio URL must start with http:// or https://.")
+    parsed = urllib.parse.urlparse(normalized)
+    hostname = parsed.hostname or ""
+    if not hostname:
+        raise ValueError("Invalid audio URL: missing hostname.")
+    if _is_private_host(hostname):
+        raise ValueError("Audio URL must point to a public host.")
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        async with httpx.AsyncClient(
+            timeout=15.0, follow_redirects=True, max_redirects=3
+        ) as client:
             response = await client.get(normalized)
             response.raise_for_status()
     except httpx.HTTPStatusError as exc:
