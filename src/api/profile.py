@@ -184,29 +184,20 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
     # Try max_completion_tokens first (required by gpt-5, o-series and newer).
     # If that fails for any reason, retry with legacy max_tokens.
     # Only report failure if both attempts fail.
+    # --- Text model: cheapest possible call ---
+    # Don't set any token limit — 1 token causes some models to 400 saying
+    # they couldn't finish. We only care that the API accepts the request.
     text_ok = False
     text_error: Optional[str] = None
     _model = payload.text_model.strip()
-    _msg = [{"role": "user", "content": "Hi"}]
     try:
         client.chat.completions.create(
-            model=_model, messages=_msg, max_completion_tokens=1
+            model=_model,
+            messages=[{"role": "user", "content": "Hi"}],
         )
         text_ok = True
-    except Exception as first_exc:
-        first_error = _extract_openai_error(first_exc)
-        try:
-            client.chat.completions.create(model=_model, messages=_msg, max_tokens=1)
-            text_ok = True
-        except Exception as second_exc:
-            second_msg = str(second_exc).lower()
-            # If the fallback itself says "use max_completion_tokens instead",
-            # the model is new but the first call failed for a real reason —
-            # report the first error, not the confusing fallback error.
-            if "max_completion_tokens" in second_msg:
-                text_error = first_error
-            else:
-                text_error = _extract_openai_error(second_exc)
+    except Exception as exc:
+        text_error = _extract_openai_error(exc)
 
     # --- Audio model: shortest possible TTS input ---
     audio_ok = False
