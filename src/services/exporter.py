@@ -106,6 +106,14 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
 
             entry_uuid = _entry_uuid(card)
             note_guid = stable_card_guid(entry_uuid, card.get("direction") or "forward")
+            # Anki requires tags to have no spaces — replace with underscore.
+            # Also deduplicate and skip empty strings.
+            raw_tags = card.get("tag_names") or []
+            safe_tags = list(
+                dict.fromkeys(
+                    t.strip().replace(" ", "_") for t in raw_tags if t and t.strip()
+                )
+            )
             note = TimestampedNote(
                 model=model,
                 fields=[
@@ -113,7 +121,7 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     f"{card['back']}{back_audio_tag}",
                 ],
                 guid=note_guid,
-                tags=card.get("tag_names") or [],
+                tags=safe_tags,
                 updated_at=card.get("updated_at"),
             )
             anki_deck.add_note(note)

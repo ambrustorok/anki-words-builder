@@ -295,11 +295,23 @@ def export_deck(deck_id: str, user=Depends(get_current_user)):
         raise HTTPException(status_code=400, detail="No cards to export yet.")
 
     # Attach tag names to each card for export — one lookup per group
-    group_ids = list({c["card_group_id"] for c in cards})
+    group_ids = list({str(c["card_group_id"]) for c in cards})
     tags_by_group = tag_service.get_tags_for_card_groups(group_ids)
+    tagged_count = 0
     for card in cards:
         gid = str(card["card_group_id"])
         card["tag_names"] = [t["name"] for t in tags_by_group.get(gid, [])]
+        if card["tag_names"]:
+            tagged_count += 1
+    import logging
+
+    logging.getLogger(__name__).info(
+        "Export: %d cards, %d groups, %d with tags, tag_map keys sample: %s",
+        len(cards),
+        len(group_ids),
+        tagged_count,
+        list(tags_by_group.keys())[:3],
+    )
 
     binary = export_service.export_deck(deck, cards)
     filename_slug = _safe_filename(deck["name"])
