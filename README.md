@@ -1,97 +1,141 @@
 # Anki Words Builder
 
-FastAPI + React stack for creating bilingual study decks, powered by OpenAI generation and Cloudflare Zero Trust authentication. Every request is gated by Cloudflare Access (`Cf-Access-Authenticated-User-Email`), so users never see a login form—Cloudflare injects the verified email, and the app provisions the profile automatically.
+A self-hosted, AI-powered flashcard builder for language learners. Type a word or phrase, let GPT fill in the translation, dictionary entry, example sentence, and pronunciation audio — then export a ready-to-import `.apkg` deck straight into Anki. Designed for daily use from a phone, deployed behind Cloudflare Zero Trust.
 
-## Cloudflare Zero Trust Integration
+## What it does
 
-- **Authentication**: All API calls must include the `Cf-Access-Authenticated-User-Email` header. Cloudflare Access apps add it automatically once you protect the domain/subdomain that serves this repository.
-- **Local development**: Set `ALLOW_LOCAL_USER=true` and `LOCAL_USER_EMAIL=local@example.com` (or similar) if you want to bypass Cloudflare while running `docker compose` locally.
-- **Always-on admins**: Populate `LOCAL_ALWAYS_ADMIN_EMAIL` and `ADDITIONAL_ADMIN_EMAILS` (comma-separated) so those identities are promoted to admin as soon as they log in. This is the easiest way to seed your first super-admin.
+- **AI card generation** — translate, generate a dictionary entry, write an example sentence, and record TTS audio for every card in one tap
+- **Per-user model selection** — each user picks their own OpenAI text model (`gpt-4o`, `gpt-4o-mini`, `o4-mini`, …) and audio model (`gpt-4o-mini-tts`, `tts-1`, `tts-1-hd`, …) from the live OpenAI models list
+- **Tags** — define CEFR levels (A1–C2), topic categories, or any custom tags per deck; AI can infer and assign them automatically; tags are exported natively into Anki
+- **Custom card templates** — full control over what appears on the front and back of each Anki card using `{{variable}}` placeholders
+- **Custom generation prompts** — override the system and user prompts for every AI step per deck (or globally as admin)
+- **Backup & restore** — export a `.awdeck` ZIP archive and re-import it with merge/override conflict resolution; tags included
+- **Anki export** — deterministic `.apkg` files; re-exporting updates existing notes in Anki instead of duplicating them
+- **Multi-user** — each user has isolated decks, their own OpenAI key (encrypted at rest with Fernet), and their own model preferences
+- **Cloudflare Zero Trust auth** — no login form; Cloudflare Access injects the verified user email
 
-## Quickstart (Docker Compose)
+## Stack
 
-1. **Create `.env` in the repo root**
+| Layer | Technology |
+|---|---|
+| Backend | FastAPI, Python 3.12, uv |
+| Database | PostgreSQL (psycopg2) |
+| AI | OpenAI Chat Completions + TTS |
+| Anki export | genanki |
+| Frontend | React 18, Vite, TailwindCSS, TanStack Query |
+| Auth | Cloudflare Zero Trust (Access) |
+| Runtime | Docker Compose |
 
-   ```dotenv
-   POSTGRES_USER=anki
-   POSTGRES_PASSWORD=anki
-   POSTGRES_DB=anki_words
-   POSTGRES_HOST=postgres
-   POSTGRES_PORT=5432
+## Quickstart
 
-   OPENAI_API_KEY=sk-...
+### 1. Create `.env` in the repo root
 
-   # Cloudflare / onboarding helpers
-   LOCAL_USER_EMAIL=local@example.com
-   ALLOW_LOCAL_USER=true
-   LOCAL_ALWAYS_ADMIN_EMAIL=local@example.com
-   ADDITIONAL_ADMIN_EMAILS=you@example.com
-   ```
+```dotenv
+# Postgres
+POSTGRES_USER=anki
+POSTGRES_PASSWORD=changeme
+POSTGRES_DB=anki_words
+POSTGRES_HOST=postgres
+POSTGRES_PORT=5432
 
-   > When running behind Cloudflare, set `ALLOW_LOCAL_USER=false` and omit the `LOCAL_*` overrides.
+# OpenAI system-wide fallback key (users can override with their own on the Profile page)
+OPENAI_API_KEY=sk-...
 
-2. **Start the stack**
+# Fernet key for encrypting stored user API keys — generate with:
+# python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+API_KEY_ENCRYPTION_KEY=...
 
-   ```bash
-   docker compose up --build --force-recreate --detach
-   ```
+# Default text model for new users (optional, default: gpt-4o-mini)
+OPENAI_MODEL=gpt-4o-mini
 
-   - Backend API: http://localhost:8100/api
-   - Frontend SPA: http://localhost:5173
-   - PostgreSQL: local container volume (`postgres_data`)
+# Cloudflare / local dev auth
+ALLOW_LOCAL_USER=true
+LOCAL_USER_EMAIL=local@example.com
 
-3. **Tail logs when needed**
+# Comma-separated emails auto-promoted to admin on first login
+LOCAL_ALWAYS_ADMIN_EMAIL=local@example.com
+ADDITIONAL_ADMIN_EMAILS=
 
-   ```bash
-   docker compose logs --follow backend
-   docker compose logs --follow frontend
-   ```
+# Comma-separated CORS origins for the frontend
+FRONTEND_ORIGINS=http://localhost:5173
+```
 
-4. **Stop everything**
+> In production, set `ALLOW_LOCAL_USER=false` and remove the `LOCAL_*` overrides.
 
-   ```bash
-   docker compose down
-   ```
+### 2. Start
 
-Because the compose file mounts your working tree, edits to Python/TypeScript files hot-reload automatically (Uvicorn + Vite).
+```bash
+docker compose up --build
+```
 
-5. **Create the first admin**
+- Frontend: http://localhost:5173
+- API: http://localhost:8100/api
+- The working tree is mounted into both containers — Python and TypeScript changes hot-reload automatically.
 
-   Once your Cloudflare-protected user has loaded the app at least once (so their profile exists), promote them via the CLI:
+### 3. First admin
 
-   ```bash
-   docker compose exec backend uv run python -m src.cli users grant-admin you@example.com
-   ```
+Add your email to `LOCAL_ALWAYS_ADMIN_EMAIL` (or `ADDITIONAL_ADMIN_EMAILS`) before starting. That email is auto-promoted to admin on first login. Alternatively use the CLI after the user has logged in once:
 
-   You can always rerun the command for new admins or list everyone with `docker compose exec backend uv run python -m src.cli users list`.
+```bash
+docker compose exec backend uv run python -m src.cli users grant-admin you@example.com
+docker compose exec backend uv run python -m src.cli users list
+```
 
-## Provisioning the First Admin
+## Cloudflare Zero Trust (production)
 
-1. Ensure the person who should be the initial admin can authenticate through Cloudflare and hit the SPA once (this creates their profile).
-2. Promote them via the CLI:
+1. Create a Cloudflare Access application protecting your domain/subdomain.
+2. Set `ALLOW_LOCAL_USER=false`.
+3. Cloudflare injects `Cf-Access-Authenticated-User-Email` on every authenticated request — the app reads that header to identify users.
+4. Expose only the frontend port through the Cloudflare Tunnel; add the tunnel hostname to `FRONTEND_ORIGINS`.
 
-   ```bash
-   docker compose exec backend uv run python -m src.cli users grant-admin you@example.com
-   ```
+## Per-user model preferences
 
-   - List profiles: `docker compose exec backend uv run python -m src.cli users list`
-   - Revoke admin later: `... users revoke-admin you@example.com`
+Each user can select on their Profile page:
 
-   Alternatively, add the email to `ADDITIONAL_ADMIN_EMAILS` before booting; those addresses auto-promote on login.
+- **Text model** — used for translation, dictionary, example sentence, tag inference (fetched live from OpenAI)
+- **Audio model** — used for TTS pronunciation (fetched live from OpenAI)
 
-## Configuration Reference
+If no preference is set the server default (`OPENAI_MODEL`) is used. Models are fetched using the user's own API key, or the system key if none is set.
 
-| Variable | Description |
-| --- | --- |
-| `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | Database location + credentials (defaults align with `docker-compose.yaml`). |
-| `OPENAI_API_KEY` | Server-side key used when a profile hasn’t provided their own. |
-| `LOCAL_USER_EMAIL` | Email injected when `ALLOW_LOCAL_USER=true` (development only). |
-| `LOCAL_ALWAYS_ADMIN_EMAIL` | Protected account that can’t lose admin status. |
-| `ADDITIONAL_ADMIN_EMAILS` | Comma-separated list of extra always-admin accounts. |
-| `FRONTEND_ORIGINS` | Comma-separated list of allowed SPA origins (defaults to `http://localhost:5173`). |
-| `VITE_API_URL` (frontend) | Override API origin baked into the bundle (otherwise current origin + `/api`). |
+## Environment variables
 
-## Development Without Docker
+| Variable | Default | Description |
+|---|---|---|
+| `POSTGRES_HOST/PORT/DB/USER/PASSWORD` | — | Database connection |
+| `OPENAI_API_KEY` | — | System-wide fallback OpenAI key |
+| `API_KEY_ENCRYPTION_KEY` | (dev key — insecure) | Fernet key for encrypting stored user keys |
+| `OPENAI_MODEL` | `gpt-4o-mini` | Default text model for new users |
+| `ALLOW_LOCAL_USER` | `true` | Bypass Cloudflare auth (dev only) |
+| `LOCAL_USER_EMAIL` | `local@example.com` | Email used when `ALLOW_LOCAL_USER=true` |
+| `LOCAL_ALWAYS_ADMIN_EMAIL` | — | Auto-admin email in local mode |
+| `ADDITIONAL_ADMIN_EMAILS` | — | Comma-separated always-admin emails |
+| `FRONTEND_ORIGINS` | `http://localhost:5173` | CORS-allowed origins |
+| `VITE_API_URL` | current origin + `/api` | Override API URL baked into the frontend bundle |
+
+## Backup format
+
+`.awdeck` is a ZIP archive containing:
+- `deck.json` — deck metadata, field schema, prompt templates, tag definitions, tag mode
+- `cards.json` — all card payloads, directions, timestamps, tag assignments
+- Audio files — one `.mp3` per card that has audio
+
+Import policies: `override` (replace), `prefer_newest` (keep whichever side has the later `updated_at`), `only_new` (skip existing entries). A `409` is returned when a policy is not specified and the deck already exists.
+
+## CLI reference
+
+```bash
+# List all users
+docker compose exec backend uv run python -m src.cli users list
+
+# Grant / revoke admin
+docker compose exec backend uv run python -m src.cli users grant-admin user@example.com
+docker compose exec backend uv run python -m src.cli users revoke-admin user@example.com
+
+# Delete a user (cascades all decks and cards)
+docker compose exec backend uv run python -m src.cli users delete user@example.com
+```
+
+## Development without Docker
 
 ```bash
 # Backend
@@ -100,49 +144,5 @@ uv pip install -e .
 uv run uvicorn src.app:app --reload --port 8100
 
 # Frontend
-cd frontend
-npm install
-npm run dev
+cd frontend && npm install && npm run dev
 ```
-
-Use `VITE_API_URL` if the SPA is served from a different host/port than the API.
-
-## Feature Highlights
-
-- Deck-per-language structure with customizable schemas and prompt templates for forward/backward directions.
-- Inline generation of translations, dictionary notes, example sentences, and TTS audio using user-supplied OpenAI keys (or the server default).
-- Card template editor (front/back) plus global default controls for admins.
-- Audio orchestration with per-deck instructions, voice selection, and optional generation.
-- Cloudflare-integrated multi-email accounts, profile management UI, and admin console.
-- Typer CLI for batch operations: list users, add/remove emails, grant/revoke admin access, or delete profiles.
-- Export-ready data for Anki with predictable HTML structure and audio attachments.
-- Deterministic Anki IDs per deck + entry so exports, backups, and cross-environment edits stay in sync.
-
-## Backups, Imports, and Anki IDs
-
-- **Deck + entry IDs**: Every deck is assigned an `anki_id` (UUID) and each entry (card group) gets its own `entry_anki_id`. Card GUIDs exported to Anki are derived from `(entry_anki_id, direction)`, so deleting/re-adding directions or restoring from backups always reuses the same note IDs.
-- **Backups**: `/decks/{id}/backup` produces a `.awdeck` zip (manifest v2) that captures deck metadata, prompt templates, payloads, audio, and the deterministic Anki identifiers.
-- **Imports**: `/decks/import` accepts the `.awdeck` file plus an optional `policy` form field:
-  - `override` (default via UI “Override existing deck”) – replace the entire deck with the backup contents.
-  - `prefer_newest` – compare `entry_anki_id + direction` timestamps and keep whichever version has the latest `updated_at`.
-  - `only_new` – import entries that don’t already exist (no changes to existing ones).
-  If no policy is provided and the deck’s `anki_id` already exists, the API returns `409` with the conflict payload so the frontend can prompt the user.
-- **Cross-environment editing**: Because IDs stay fixed, you can export from environment A, import into B, continue editing, then move the deck back without creating duplicates. Even if you toggle individual directions off/on, Anki sees the same GUID and updates the original note instead of creating a new one.
-
-## Cloudflare Tunnel Tips
-
-If you front the SPA via Cloudflare Tunnel:
-
-1. Expose only the frontend port (5173) through the tunnel.
-2. Add your tunnel hostname to `FRONTEND_ORIGINS`.
-3. Cloudflare Access enforces identity, injects `Cf-Access-Authenticated-User-Email`, and the SPA proxies `/api` calls back to the backend container.
-
-## Need to Rotate Admins Later?
-
-```bash
-docker compose exec backend uv run python -m src.cli users list --admins-only
-docker compose exec backend uv run python -m src.cli users revoke-admin someone@example.com
-docker compose exec backend uv run python -m src.cli users delete user@example.com
-```
-
-Protected accounts (from `LOCAL_ALWAYS_ADMIN_EMAIL` or `ADDITIONAL_ADMIN_EMAILS`) cannot be revoked or deleted until you remove them from the env file and restart the stack.
