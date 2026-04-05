@@ -23,7 +23,7 @@ def get_user_api_key(user_id: uuid.UUID, provider: str = "openai") -> Optional[s
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                SELECT key_ciphertext
+                SELECT id, key_ciphertext
                 FROM user_api_keys
                 WHERE user_id = %s AND provider = %s
                 ORDER BY created_at DESC
@@ -37,16 +37,20 @@ def get_user_api_key(user_id: uuid.UUID, provider: str = "openai") -> Optional[s
             raw = row["key_ciphertext"]
             if not raw:
                 return None
-            try:
-                return decrypt(raw)
-            except ValueError:
-                # Stored value is not encrypted (legacy plaintext) — return as-is
-                # and let the next set_user_api_key call re-encrypt it.
-                logger.warning(
-                    "API key for user %s is stored as plaintext; it will be re-encrypted on next save.",
-                    user_id,
-                )
-                return raw
+            # Update last_used_at
+            cur.execute(
+                "UPDATE user_api_keys SET last_used_at = NOW() WHERE id = %s",
+                (str(row["id"]),),
+            )
+        conn.commit()
+    try:
+        return decrypt(raw)
+    except ValueError:
+        logger.warning(
+            "API key for user %s is stored as plaintext; it will be re-encrypted on next save.",
+            user_id,
+        )
+        return raw
 
 
 def set_user_api_key(user_id: uuid.UUID, api_key: str, provider: str = "openai"):

@@ -319,24 +319,6 @@ def backup_deck(deck_id: str, user=Depends(get_current_user)):
     )
 
 
-@router.get("/{deck_id}/backup")
-def backup_deck(deck_id: str, user=Depends(get_current_user)):
-    deck_uuid = parse_uuid(deck_id, entity="Deck")
-    deck = deck_service.get_deck(deck_uuid, user["id"])
-    if not deck:
-        raise HTTPException(status_code=404, detail="Deck not found.")
-    cards = card_service.get_cards_for_backup(user["id"], deck_uuid)
-    archive = backup_service.create_backup_archive(deck, cards)
-    filename_slug = deck["name"].lower().replace(" ", "_")
-    return StreamingResponse(
-        io.BytesIO(archive),
-        media_type="application/zip",
-        headers={
-            "Content-Disposition": f'attachment; filename="{filename_slug}.awdeck"'
-        },
-    )
-
-
 @router.post("/import")
 async def import_deck(
     file: UploadFile = File(...),

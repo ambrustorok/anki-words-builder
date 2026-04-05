@@ -132,7 +132,7 @@ def generate_foreign_from_native(
         target_language=target_language,
     )
     response = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model=OPENAI_MODEL,
         temperature=0.2,
         messages=[
             {
