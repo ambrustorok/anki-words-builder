@@ -225,10 +225,17 @@ def batch_infer_tags(
     model: Optional[str] = None,
 ) -> List[Dict]:
     """
-    Infer tags for all candidates in one LLM call.
-    prefilled_tag_names: {foreign_phrase: [tag_name, ...]} — tags already assigned
-                         by the user's constraint selections (skip inferring those categories)
-    Returns candidates with suggested_tag_names set.
+    Infer non-constrained tags for all candidates in one LLM call.
+
+    prefilled_tag_names: {foreign_phrase: [tag_name, ...]}
+        Constraint tags locked by the user's cell selection. These are
+        ALWAYS applied as-is — the AI never sees or overrides them.
+        The AI only infers tags from categories NOT represented in each
+        candidate's own constraint tags.
+
+    Strategy: find the union of all constrained categories across all
+    candidates, exclude those from the AI prompt entirely, then merge
+    AI results with locked constraint tags (locked tags always win).
     """
     if not candidates or not available_tags:
         for c in candidates:
@@ -238,46 +245,48 @@ def batch_infer_tags(
     m = model or OPENAI_MODEL
     prefilled = prefilled_tag_names or {}
 
-    # Build tag list by category, noting which categories are already filled
-    prefilled_categories: Set[str] = set()
+    # Build a lookup: tag_name → category
+    name_to_category: Dict[str, str] = {
+        t["name"]: (t.get("category") or "General") for t in available_tags
+    }
+
+    # Find categories that are constrained for ANY candidate.
+    # These are excluded from the AI prompt — we never ask the AI to infer
+    # them because some candidates already have them locked.
+    constrained_categories: Set[str] = set()
     for tag_names in prefilled.values():
         for tn in tag_names:
-            for t in available_tags:
-                if t["name"] == tn:
-                    prefilled_categories.add(t.get("category", ""))
+            if tn in name_to_category:
+                constrained_categories.add(name_to_category[tn])
 
-    # Only include categories not already constrained
-    tag_lines = []
-    seen: Dict[str, List[str]] = {}
+    # Build the AI tag menu: only categories NOT constrained by any cell
+    inferrable: Dict[str, List[str]] = {}
     for tag in available_tags:
         cat = tag.get("category") or "General"
-        if cat in prefilled_categories:
-            continue
-        seen.setdefault(cat, []).append(tag["name"])
-    for cat, names in seen.items():
-        tag_lines.append(f"- {cat}: {', '.join(names)}")
+        if cat not in constrained_categories:
+            inferrable.setdefault(cat, []).append(tag["name"])
 
-    if not tag_lines:
-        # All categories pre-filled — just apply prefilled tags
+    if not inferrable:
+        # Everything is constrained — just lock in the prefilled tags
         for c in candidates:
-            fp = c["foreign_phrase"]
-            c["suggested_tag_names"] = prefilled.get(fp, [])
+            c["suggested_tag_names"] = list(prefilled.get(c["foreign_phrase"], []))
         return candidates
 
-    tag_list_text = "\n".join(tag_lines)
+    tag_list_text = "\n".join(
+        f"- {cat}: {', '.join(names)}" for cat, names in inferrable.items()
+    )
     words_list = "\n".join(f"- {c['foreign_phrase']}" for c in candidates)
-
-    excl_note = "For exclusive categories (where only one tag per item makes sense), assign at most one."
 
     user_prompt = (
         f"Language: {target_language}\n\n"
         f"Available tags to assign:\n{tag_list_text}\n\n"
-        f"{excl_note}\n\n"
+        "For exclusive categories (where only one tag per item makes sense), assign at most one.\n\n"
         f"Words/phrases:\n{words_list}\n\n"
-        'Return ONLY a valid JSON object mapping each word to its tags: {"word": ["tag1", "tag2"], ...}\n'
+        'Return ONLY a valid JSON object: {"word": ["tag1", "tag2"], ...}\n'
         "Use [] if no tags clearly apply. Only use tags from the list above."
     )
 
+    tag_map: Dict[str, List[str]] = {}
     try:
         response = client.chat.completions.create(
             model=m,
@@ -294,18 +303,20 @@ def batch_infer_tags(
         raw = response.choices[0].message.content.strip()
         if raw.startswith("```"):
             raw = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
-        tag_map: Dict[str, List[str]] = json.loads(raw)
-        valid_names = {t["name"] for t in available_tags}
-        for c in candidates:
-            fp = c["foreign_phrase"]
-            inferred = [n for n in tag_map.get(fp, []) if n in valid_names]
-            pre = prefilled.get(fp, [])
-            c["suggested_tag_names"] = list(
-                dict.fromkeys(pre + inferred)
-            )  # pre first, deduped
+        tag_map = json.loads(raw)
     except Exception:
-        for c in candidates:
-            c["suggested_tag_names"] = prefilled.get(c["foreign_phrase"], [])
+        pass  # tag_map stays empty — fall through to prefilled-only
+
+    valid_names = {t["name"] for t in available_tags}
+    for c in candidates:
+        fp = c["foreign_phrase"]
+        locked = list(prefilled.get(fp, []))  # constraint tags — always kept
+        inferred = [
+            n
+            for n in tag_map.get(fp, [])
+            if n in valid_names and n not in locked  # AI tags — never override locked
+        ]
+        c["suggested_tag_names"] = list(dict.fromkeys(locked + inferred))
 
     return candidates
 
