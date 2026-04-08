@@ -197,7 +197,7 @@ export function ProfilePage() {
 
 
   return (
-    <div className="mx-auto max-w-2xl space-y-5">
+    <div className="mx-auto max-w-4xl space-y-5">
       {message && (
         <p className="rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700 dark:bg-emerald-400/20 dark:text-emerald-100">
           {message}
