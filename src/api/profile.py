@@ -69,6 +69,10 @@ class ThemePayload(BaseModel):
     theme: str  # 'light' | 'dark' | 'system'
 
 
+class NativeLanguagePayload(BaseModel):
+    native_language: str = Field(..., alias="nativeLanguage")
+
+
 class ModelTestPayload(BaseModel):
     text_model: str = Field(..., alias="textModel")
     audio_model: str = Field(..., alias="audioModel")
@@ -108,6 +112,26 @@ def set_api_key(payload: APIKeyPayload, user=Depends(get_current_user)):
 def delete_api_key(user=Depends(get_current_user)):
     api_key_service.delete_user_api_key(user["id"])
     return {"status": "ok"}
+
+
+@router.put("/native-language")
+def update_native_language(
+    payload: NativeLanguagePayload, user=Depends(get_current_user)
+):
+    language = payload.native_language.strip()
+    if not language:
+        raise HTTPException(status_code=400, detail="Language cannot be empty.")
+    if language not in NATIVE_LANGUAGE_OPTIONS:
+        raise HTTPException(status_code=400, detail="Unsupported native language.")
+    user_service.set_native_language(user["id"], language)
+    fresh = user_service.get_user(user["id"]) or user
+    return {
+        "status": "ok",
+        "user": {
+            "id": str(fresh["id"]),
+            "nativeLanguage": fresh.get("native_language"),
+        },
+    }
 
 
 @router.get("/models/available")

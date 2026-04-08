@@ -46,6 +46,7 @@ export function ProfilePage() {
   const [newEmail, setNewEmail] = useState("");
   const [message, setMessage] = useState("");
   const [errMsg, setErrMsg] = useState("");
+  const [nativeLangEdit, setNativeLangEdit] = useState("");
 
   // Model prefs state
   const [textModel, setTextModel] = useState("");
@@ -57,11 +58,12 @@ export function ProfilePage() {
   const [modelsSaved, setModelsSaved] = useState(false);
   const [modelsErr, setModelsErr] = useState("");
 
-  // Seed model inputs from profile
+  // Seed inputs from profile
   useEffect(() => {
     if (data?.user) {
       setTextModel(data.user.textModel ?? "gpt-5.4-nano");
       setAudioModel(data.user.audioModel ?? "gpt-4o-mini-tts");
+      setNativeLangEdit(data.user.nativeLanguage ?? "");
     }
   }, [data?.user]);
 
@@ -95,6 +97,23 @@ export function ProfilePage() {
       await apiFetch("/profile/api-key", { method: "DELETE" });
       refetch();
       setMessage("API key removed.");
+    } catch (err) {
+      setErrMsg((err as Error).message);
+    }
+  };
+
+  const saveNativeLanguage = async () => {
+    const lang = nativeLangEdit.trim();
+    if (!lang || lang === user?.nativeLanguage) return;
+    const confirmed = window.confirm(
+      `Change your native language to "${lang}"?\n\nThis affects how future cards are generated for all your decks.`
+    );
+    if (!confirmed) return;
+    setErrMsg("");
+    try {
+      await apiFetch("/profile/native-language", { method: "PUT", json: { nativeLanguage: lang } });
+      refetch();
+      setMessage("Native language updated.");
     } catch (err) {
       setErrMsg((err as Error).message);
     }
@@ -238,6 +257,38 @@ export function ProfilePage() {
             <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Text model</p>
             <p className="mt-1 font-semibold text-slate-900 dark:text-white truncate">{user?.textModel || "gpt-5.4-nano"}</p>
           </div>
+        </div>
+      </section>
+
+      {/* Native language */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div>
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Native language</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">
+            Used for translations and card generation across all your decks.
+          </p>
+        </div>
+        <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
+          <div className="flex-1">
+            <select
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={nativeLangEdit}
+              onChange={(e) => setNativeLangEdit(e.target.value)}
+            >
+              <option value="">Select language</option>
+              {(data?.nativeLanguageOptions ?? []).map((lang) => (
+                <option key={lang} value={lang}>{lang}</option>
+              ))}
+            </select>
+          </div>
+          <button
+            type="button"
+            onClick={saveNativeLanguage}
+            disabled={!nativeLangEdit.trim() || nativeLangEdit === user?.nativeLanguage}
+            className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-40 min-h-[44px]"
+          >
+            Save
+          </button>
         </div>
       </section>
 
