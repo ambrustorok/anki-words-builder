@@ -14,6 +14,7 @@ interface ProfileResponse {
     isAdmin: boolean;
     textModel?: string;
     audioModel?: string;
+    modelsLocked?: boolean;
   };
   emails: { id: string; email: string; is_primary: boolean }[];
   apiKey: { has_key: boolean; masked?: string };
@@ -59,7 +60,7 @@ export function ProfilePage() {
   // Seed model inputs from profile
   useEffect(() => {
     if (data?.user) {
-      setTextModel(data.user.textModel ?? "gpt-4o-mini");
+      setTextModel(data.user.textModel ?? "gpt-5.4-nano");
       setAudioModel(data.user.audioModel ?? "gpt-4o-mini-tts");
     }
   }, [data?.user]);
@@ -72,6 +73,7 @@ export function ProfilePage() {
   const nativeLanguage = user?.nativeLanguage || "Not set";
   const primaryEmail = emails.find((e) => e.is_primary)?.email || user?.primaryEmail || "—";
   const hasApiKey = Boolean(data?.apiKey?.has_key);
+  const modelsLocked = Boolean(user?.modelsLocked);
   const logoutHref = getCloudflareLogoutUrl();
 
   const handleApiKey = async (event: FormEvent) => {
@@ -234,7 +236,7 @@ export function ProfilePage() {
           </div>
           <div className="col-span-2 sm:col-span-1 rounded-2xl border border-slate-100 bg-slate-50 p-3 dark:border-slate-800 dark:bg-slate-900/60">
             <p className="text-xs uppercase tracking-wide text-slate-400 dark:text-slate-500">Text model</p>
-            <p className="mt-1 font-semibold text-slate-900 dark:text-white truncate">{user?.textModel || "gpt-4o-mini"}</p>
+            <p className="mt-1 font-semibold text-slate-900 dark:text-white truncate">{user?.textModel || "gpt-5.4-nano"}</p>
           </div>
         </div>
       </section>
@@ -293,10 +295,12 @@ export function ProfilePage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900 dark:text-white">AI Models</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Choose models for text and audio generation. Test before saving.
+              {modelsLocked
+                ? "Your model settings are managed by an administrator."
+                : "Choose models for text and audio generation. Test before saving."}
             </p>
           </div>
-          {!availableModels && (
+          {!modelsLocked && !availableModels && (
             <button
               type="button"
               onClick={loadAvailableModels}
@@ -321,7 +325,7 @@ export function ProfilePage() {
               Text model
             </label>
             <div className="relative">
-              {availableModels ? (
+              {availableModels && !modelsLocked ? (
                 <select
                   className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white ${
                     testResult
@@ -339,13 +343,14 @@ export function ProfilePage() {
                 </select>
               ) : (
                 <input
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   value={textModel}
                   onChange={(e) => handleTextModelChange(e.target.value)}
-                  placeholder="e.g. gpt-4o-mini"
+                  placeholder="e.g. gpt-5.4-nano"
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
+                  disabled={modelsLocked}
                 />
               )}
               {testResult && (
@@ -365,7 +370,7 @@ export function ProfilePage() {
               Audio model
             </label>
             <div className="relative">
-              {availableModels ? (
+              {availableModels && !modelsLocked ? (
                 <select
                   className={`w-full rounded-xl border px-3 py-2.5 text-sm dark:bg-slate-900 dark:text-white ${
                     testResult
@@ -383,13 +388,14 @@ export function ProfilePage() {
                 </select>
               ) : (
                 <input
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  className="w-full rounded-xl border border-slate-200 px-3 py-2.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white disabled:opacity-60 disabled:cursor-not-allowed"
                   value={audioModel}
                   onChange={(e) => handleAudioModelChange(e.target.value)}
                   placeholder="e.g. gpt-4o-mini-tts"
                   spellCheck={false}
                   autoCorrect="off"
                   autoCapitalize="off"
+                  disabled={modelsLocked}
                 />
               )}
               {testResult && (
@@ -404,27 +410,29 @@ export function ProfilePage() {
           </div>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={testModels}
-            disabled={testing || !textModel.trim() || !audioModel.trim()}
-            className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 min-h-[44px]"
-          >
-            {testing ? "Testing…" : "Test"}
-          </button>
-          <button
-            type="button"
-            onClick={saveModelPrefs}
-            disabled={!textModel.trim() || !audioModel.trim()}
-            className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-40 min-h-[44px]"
-          >
-            Save
-          </button>
-          {modelsSaved && (
-            <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
-          )}
-        </div>
+        {!modelsLocked && (
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <button
+              type="button"
+              onClick={testModels}
+              disabled={testing || !textModel.trim() || !audioModel.trim()}
+              className="rounded-full border border-slate-300 px-5 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 min-h-[44px]"
+            >
+              {testing ? "Testing…" : "Test"}
+            </button>
+            <button
+              type="button"
+              onClick={saveModelPrefs}
+              disabled={!textModel.trim() || !audioModel.trim()}
+              className="rounded-full bg-brand px-5 py-2.5 text-sm font-semibold text-slate-900 disabled:opacity-40 min-h-[44px]"
+            >
+              Save
+            </button>
+            {modelsSaved && (
+              <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
+            )}
+          </div>
+        )}
       </section>
 
       {/* Emails */}

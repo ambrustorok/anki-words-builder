@@ -19,6 +19,7 @@ DEFAULT_AUDIO_MODEL = "gpt-4o-mini-tts"
 
 # Curated list shown when the API can't be reached or returns nothing useful.
 _FALLBACK_TEXT_MODELS = [
+    "gpt-5.4-nano",
     "gpt-4o",
     "gpt-4o-mini",
     "o4-mini",
@@ -33,7 +34,7 @@ _FALLBACK_AUDIO_MODELS = [
 ]
 
 # ---- ID-pattern classification (best available without capability metadata) ----
-_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "chatgpt")
+_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "o5", "chatgpt")
 _TEXT_EXCLUDE = (
     "tts",
     "realtime",
@@ -86,6 +87,7 @@ def profile_detail(user=Depends(get_current_user)):
             "textModel": fresh_user.get("text_model"),
             "audioModel": fresh_user.get("audio_model"),
             "theme": fresh_user.get("theme") or "system",
+            "modelsLocked": bool(fresh_user.get("models_locked")),
         },
         "emails": emails,
         "apiKey": api_key_service.get_api_key_summary(user["id"]),
@@ -241,6 +243,12 @@ def set_theme(payload: ThemePayload, user=Depends(get_current_user)):
 
 @router.put("/models")
 def set_model_preferences(payload: ModelPrefsPayload, user=Depends(get_current_user)):
+    fresh = user_service.get_user(user["id"]) or user
+    if fresh.get("models_locked"):
+        raise HTTPException(
+            status_code=403,
+            detail="Your model settings are managed by an administrator.",
+        )
     user_service.set_user_models(
         user["id"],
         text_model=payload.text_model,

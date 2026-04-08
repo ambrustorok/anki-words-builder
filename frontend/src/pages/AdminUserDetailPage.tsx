@@ -1,4 +1,4 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
@@ -6,8 +6,19 @@ import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { useSession } from "../lib/session";
 
+interface AdminUser {
+  id: string;
+  native_language?: string;
+  primary_email?: string;
+  is_admin: boolean;
+  text_model?: string;
+  audio_model?: string;
+  theme?: string;
+  models_locked?: boolean;
+}
+
 interface AdminUserDetailResponse {
-  user: { id: string; native_language?: string; primary_email?: string; is_admin: boolean };
+  user: AdminUser;
   emails: { id: string; email: string; is_primary: boolean }[];
   protectedEmails: string[];
   apiKey: { has_key: boolean; masked?: string };
@@ -21,6 +32,14 @@ export function AdminUserDetailPage() {
   const [makePrimary, setMakePrimary] = useState(false);
   const [apiKeyInput, setApiKeyInput] = useState("");
 
+  // Settings form state
+  const [settingsTextModel, setSettingsTextModel] = useState("");
+  const [settingsAudioModel, setSettingsAudioModel] = useState("");
+  const [settingsNativeLang, setSettingsNativeLang] = useState("");
+  const [settingsTheme, setSettingsTheme] = useState("system");
+  const [settingsModelsLocked, setSettingsModelsLocked] = useState(false);
+  const [settingsSaved, setSettingsSaved] = useState(false);
+
   const [actionError, setActionError] = useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -28,6 +47,17 @@ export function AdminUserDetailPage() {
     queryFn: () => apiFetch<AdminUserDetailResponse>(`/admin/users/${userId}`),
     enabled: session.data?.user.isAdmin && Boolean(userId)
   });
+
+  // Seed settings form from fetched data
+  useEffect(() => {
+    if (data?.user) {
+      setSettingsTextModel(data.user.text_model ?? "");
+      setSettingsAudioModel(data.user.audio_model ?? "");
+      setSettingsNativeLang(data.user.native_language ?? "");
+      setSettingsTheme(data.user.theme ?? "system");
+      setSettingsModelsLocked(data.user.models_locked ?? false);
+    }
+  }, [data?.user]);
 
   if (!session.data?.user.isAdmin) {
     return <p className="text-sm text-slate-500">Admin access required.</p>;
@@ -137,6 +167,28 @@ export function AdminUserDetailPage() {
     }
   };
 
+  const saveSettings = async () => {
+    setActionError("");
+    setSettingsSaved(false);
+    try {
+      await apiFetch(`/admin/users/${userId}/settings`, {
+        method: "PUT",
+        json: {
+          textModel: settingsTextModel.trim() || null,
+          audioModel: settingsAudioModel.trim() || null,
+          nativeLanguage: settingsNativeLang.trim() || null,
+          theme: settingsTheme,
+          modelsLocked: settingsModelsLocked,
+        }
+      });
+      refetch();
+      setSettingsSaved(true);
+      setTimeout(() => setSettingsSaved(false), 3000);
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
+  };
+
   const protectedEmailSet = new Set((data?.protectedEmails ?? []).map((entry) => entry.toLowerCase()));
   const isProtected = data?.user.primary_email && protectedEmailSet.has(data.user.primary_email.toLowerCase());
 
@@ -221,6 +273,97 @@ export function AdminUserDetailPage() {
             </button>
           )}
         </form>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">User settings</h2>
+          <p className="text-sm text-slate-500 dark:text-slate-400">Manage this user's models, language, theme, and restrictions.</p>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Text model
+            </label>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={settingsTextModel}
+              onChange={(e) => setSettingsTextModel(e.target.value)}
+              placeholder="e.g. gpt-5.4-nano"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Audio model
+            </label>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={settingsAudioModel}
+              onChange={(e) => setSettingsAudioModel(e.target.value)}
+              placeholder="e.g. gpt-4o-mini-tts"
+              spellCheck={false}
+              autoCorrect="off"
+              autoCapitalize="off"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Native language
+            </label>
+            <input
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={settingsNativeLang}
+              onChange={(e) => setSettingsNativeLang(e.target.value)}
+              placeholder="e.g. English"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
+              Theme
+            </label>
+            <select
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={settingsTheme}
+              onChange={(e) => setSettingsTheme(e.target.value)}
+            >
+              <option value="system">System</option>
+              <option value="light">Light</option>
+              <option value="dark">Dark</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <label className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-300">
+            <input
+              type="checkbox"
+              className="h-4 w-4 rounded border-slate-300 text-brand focus:ring-brand"
+              checked={settingsModelsLocked}
+              onChange={(e) => setSettingsModelsLocked(e.target.checked)}
+            />
+            Lock model settings
+          </label>
+          <p className="mt-1 ml-6 text-xs text-slate-500 dark:text-slate-400">
+            When enabled, this user cannot change their own model preferences.
+          </p>
+        </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <button
+            type="button"
+            onClick={saveSettings}
+            className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900"
+          >
+            Save settings
+          </button>
+          {settingsSaved && (
+            <span className="text-sm text-emerald-600 dark:text-emerald-400">Saved.</span>
+          )}
+        </div>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">

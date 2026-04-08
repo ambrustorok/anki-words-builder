@@ -10,6 +10,7 @@ export interface SessionData {
     primaryEmail?: string | null;
     isAdmin: boolean;
     theme?: "light" | "dark" | "system";
+    modelsLocked?: boolean;
   };
   logoutUrl: string;
   canGenerate: boolean;

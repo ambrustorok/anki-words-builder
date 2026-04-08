@@ -25,7 +25,7 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
             cur.execute(
                 """
                 SELECT u.id, u.native_language, u.created_at, u.is_admin,
-                       u.text_model, u.audio_model, u.theme,
+                       u.text_model, u.audio_model, u.theme, u.models_locked,
                        ue.email AS primary_email
                 FROM user_emails ue
                 JOIN users u ON u.id = ue.user_id
@@ -43,6 +43,7 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
                     "text_model": row.get("text_model"),
                     "audio_model": row.get("audio_model"),
                     "theme": row.get("theme") or "system",
+                    "models_locked": bool(row.get("models_locked")),
                 }
                 should_be_admin = normalized_email in auto_admin
                 if should_be_admin and not row["is_admin"]:
@@ -80,6 +81,7 @@ def ensure_user(email: str, auto_admin_emails: Optional[Iterable[str]] = None) -
                 "text_model": None,
                 "audio_model": None,
                 "theme": "system",
+                "models_locked": False,
             }
 
 
@@ -99,7 +101,7 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
             cur.execute(
                 """
                 SELECT u.id, u.native_language, u.is_admin,
-                       u.text_model, u.audio_model, u.theme,
+                       u.text_model, u.audio_model, u.theme, u.models_locked,
                        ue.email AS primary_email
                 FROM users u
                 LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = TRUE
@@ -118,6 +120,7 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
                 "text_model": row.get("text_model"),
                 "audio_model": row.get("audio_model"),
                 "theme": row.get("theme") or "system",
+                "models_locked": bool(row.get("models_locked")),
             }
 
 
@@ -149,6 +152,16 @@ def set_user_models(
                 WHERE id = %s
                 """,
                 (text_model or None, audio_model or None, _uuid(user_id)),
+            )
+        conn.commit()
+
+
+def set_models_locked(user_id: uuid.UUID, locked: bool) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE users SET models_locked = %s WHERE id = %s",
+                (locked, _uuid(user_id)),
             )
         conn.commit()
 

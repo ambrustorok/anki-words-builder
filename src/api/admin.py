@@ -7,7 +7,7 @@ from ..services import api_keys as api_key_service
 from ..services import app_settings as app_settings_service
 from ..services import decks as deck_service
 from ..services import users as user_service
-from ..settings import ALWAYS_ADMIN_EMAILS
+from ..settings import ALWAYS_ADMIN_EMAILS, NATIVE_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid, require_admin
 
 router = APIRouter(prefix="/admin")
@@ -32,6 +32,14 @@ class PromptTemplatePayload(BaseModel):
 
 class AdminApiKeyPayload(BaseModel):
     api_key: str = Field(..., alias="apiKey")
+
+
+class AdminUserSettingsPayload(BaseModel):
+    text_model: Optional[str] = Field(None, alias="textModel")
+    audio_model: Optional[str] = Field(None, alias="audioModel")
+    native_language: Optional[str] = Field(None, alias="nativeLanguage")
+    theme: Optional[str] = None
+    models_locked: Optional[bool] = Field(None, alias="modelsLocked")
 
 
 class SystemSettingsPayload(BaseModel):
@@ -181,6 +189,42 @@ def delete_user_api_key(user_id: str, user=Depends(require_admin)):
         raise HTTPException(status_code=404, detail="User not found.")
     api_key_service.delete_user_api_key(user_uuid)
     return {"status": "ok", "apiKey": api_key_service.get_api_key_summary(user_uuid)}
+
+
+@router.put("/users/{user_id}/settings")
+def update_user_settings(
+    user_id: str, payload: AdminUserSettingsPayload, user=Depends(require_admin)
+):
+    user_uuid = parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    if payload.native_language is not None:
+        lang = payload.native_language.strip()
+        if lang and lang not in NATIVE_LANGUAGE_OPTIONS:
+            raise HTTPException(status_code=400, detail="Unsupported native language.")
+        if lang:
+            user_service.set_native_language(user_uuid, lang)
+
+    if payload.theme is not None:
+        try:
+            user_service.set_user_theme(user_uuid, payload.theme)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if payload.text_model is not None or payload.audio_model is not None:
+        user_service.set_user_models(
+            user_uuid,
+            text_model=payload.text_model,
+            audio_model=payload.audio_model,
+        )
+
+    if payload.models_locked is not None:
+        user_service.set_models_locked(user_uuid, payload.models_locked)
+
+    updated = user_service.get_user(user_uuid)
+    return {"status": "ok", "user": updated}
 
 
 @router.get("/default-prompts")
