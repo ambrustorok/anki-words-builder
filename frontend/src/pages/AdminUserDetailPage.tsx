@@ -10,6 +10,7 @@ interface AdminUserDetailResponse {
   user: { id: string; native_language?: string; primary_email?: string; is_admin: boolean };
   emails: { id: string; email: string; is_primary: boolean }[];
   protectedEmails: string[];
+  apiKey: { has_key: boolean; masked?: string };
 }
 
 export function AdminUserDetailPage() {
@@ -18,6 +19,7 @@ export function AdminUserDetailPage() {
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [makePrimary, setMakePrimary] = useState(false);
+  const [apiKeyInput, setApiKeyInput] = useState("");
 
   const [actionError, setActionError] = useState("");
 
@@ -110,6 +112,31 @@ export function AdminUserDetailPage() {
     }
   };
 
+  const grantApiKey = async (event: FormEvent) => {
+    event.preventDefault();
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/api-key`, {
+        method: "POST",
+        json: { apiKey: apiKeyInput }
+      });
+      setApiKeyInput("");
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
+  };
+
+  const removeApiKey = async () => {
+    setActionError("");
+    try {
+      await apiFetch(`/admin/users/${userId}/api-key`, { method: "DELETE" });
+      refetch();
+    } catch (err) {
+      setActionError((err as Error).message);
+    }
+  };
+
   const protectedEmailSet = new Set((data?.protectedEmails ?? []).map((entry) => entry.toLowerCase()));
   const isProtected = data?.user.primary_email && protectedEmailSet.has(data.user.primary_email.toLowerCase());
 
@@ -160,6 +187,40 @@ export function AdminUserDetailPage() {
             )}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">OpenAI API key</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Grant or remove an OpenAI key for this user.</p>
+          </div>
+          {data?.apiKey?.has_key && (
+            <span className="rounded-full border border-emerald-300/60 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/10 dark:text-emerald-100">
+              {data.apiKey.masked ? `On file (${data.apiKey.masked})` : "On file"}
+            </span>
+          )}
+        </div>
+        <form className="mt-4 flex flex-col gap-3 sm:flex-row" onSubmit={grantApiKey}>
+          <input
+            className="flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+            placeholder={data?.apiKey?.has_key ? "Replace key" : "sk-..."}
+            value={apiKeyInput}
+            onChange={(event) => setApiKeyInput(event.target.value)}
+          />
+          <button type="submit" className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-slate-900">
+            Grant key
+          </button>
+          {data?.apiKey?.has_key && (
+            <button
+              type="button"
+              onClick={removeApiKey}
+              className="rounded-full border border-red-200 px-4 py-2 text-sm font-semibold text-red-600 dark:border-red-400/40"
+            >
+              Remove
+            </button>
+          )}
+        </form>
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">

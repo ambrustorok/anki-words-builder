@@ -3,6 +3,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from ..services import api_keys as api_key_service
 from ..services import app_settings as app_settings_service
 from ..services import decks as deck_service
 from ..services import users as user_service
@@ -27,6 +28,10 @@ class AdminTogglePayload(BaseModel):
 
 class PromptTemplatePayload(BaseModel):
     prompt_templates: dict = Field(..., alias="promptTemplates")
+
+
+class AdminApiKeyPayload(BaseModel):
+    api_key: str = Field(..., alias="apiKey")
 
 
 class SystemSettingsPayload(BaseModel):
@@ -57,6 +62,7 @@ def user_detail(user_id: str, user=Depends(require_admin)):
         "user": managed,
         "emails": emails,
         "protectedEmails": list(ALWAYS_ADMIN_EMAILS),
+        "apiKey": api_key_service.get_api_key_summary(user_uuid),
     }
 
 
@@ -150,6 +156,31 @@ def toggle_admin(
     user_service.set_admin_status(user_uuid, payload.make_admin)
     updated = user_service.get_user(user_uuid)
     return {"status": "ok", "user": updated}
+
+
+@router.post("/users/{user_id}/api-key")
+def set_user_api_key(
+    user_id: str, payload: AdminApiKeyPayload, user=Depends(require_admin)
+):
+    user_uuid = parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    key = payload.api_key.strip()
+    if not key:
+        raise HTTPException(status_code=400, detail="API key cannot be empty.")
+    api_key_service.set_user_api_key(user_uuid, key)
+    return {"status": "ok", "apiKey": api_key_service.get_api_key_summary(user_uuid)}
+
+
+@router.delete("/users/{user_id}/api-key")
+def delete_user_api_key(user_id: str, user=Depends(require_admin)):
+    user_uuid = parse_uuid(user_id, entity="User")
+    managed = user_service.get_user(user_uuid)
+    if not managed:
+        raise HTTPException(status_code=404, detail="User not found.")
+    api_key_service.delete_user_api_key(user_uuid)
+    return {"status": "ok", "apiKey": api_key_service.get_api_key_summary(user_uuid)}
 
 
 @router.get("/default-prompts")
