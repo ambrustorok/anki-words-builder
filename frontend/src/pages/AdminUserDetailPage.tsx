@@ -40,6 +40,13 @@ export function AdminUserDetailPage() {
   const [settingsModelsLocked, setSettingsModelsLocked] = useState(false);
   const [settingsSaved, setSettingsSaved] = useState(false);
 
+  // Model loading/testing state
+  const [availableModels, setAvailableModels] = useState<{ textModels: string[]; audioModels: string[] } | null>(null);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [testResult, setTestResult] = useState<{ textModel: { ok: boolean; error?: string | null }; audioModel: { ok: boolean; error?: string | null } } | null>(null);
+  const [testing, setTesting] = useState(false);
+  const [modelsErr, setModelsErr] = useState("");
+
   const [actionError, setActionError] = useState("");
 
   const { data, isLoading, error, refetch } = useQuery({
@@ -189,6 +196,41 @@ export function AdminUserDetailPage() {
     }
   };
 
+  const loadAvailableModels = async () => {
+    setModelsLoading(true);
+    setModelsErr("");
+    try {
+      const resp = await apiFetch<{ textModels: string[]; audioModels: string[] }>(`/admin/users/${userId}/models/available`);
+      setAvailableModels(resp);
+      if (!settingsTextModel && resp.textModels.length) setSettingsTextModel(resp.textModels[0]);
+      if (!settingsAudioModel && resp.audioModels.length) setSettingsAudioModel(resp.audioModels[0]);
+    } catch (err) {
+      setModelsErr((err as Error).message);
+    } finally {
+      setModelsLoading(false);
+    }
+  };
+
+  const testModels = async () => {
+    setTesting(true);
+    setModelsErr("");
+    setTestResult(null);
+    try {
+      const resp = await apiFetch<typeof testResult>(`/admin/users/${userId}/models/test`, {
+        method: "POST",
+        json: { textModel: settingsTextModel.trim(), audioModel: settingsAudioModel.trim() }
+      });
+      setTestResult(resp);
+    } catch (err) {
+      setModelsErr((err as Error).message);
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  const handleSettingsTextModelChange = (v: string) => { setSettingsTextModel(v); setTestResult(null); };
+  const handleSettingsAudioModelChange = (v: string) => { setSettingsAudioModel(v); setTestResult(null); };
+
   const protectedEmailSet = new Set((data?.protectedEmails ?? []).map((entry) => entry.toLowerCase()));
   const isProtected = data?.user.primary_email && protectedEmailSet.has(data.user.primary_email.toLowerCase());
 
@@ -276,39 +318,113 @@ export function AdminUserDetailPage() {
       </section>
 
       <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
-        <div>
-          <h2 className="text-xl font-semibold text-slate-900 dark:text-white">User settings</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Manage this user's models, language, theme, and restrictions.</p>
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="text-xl font-semibold text-slate-900 dark:text-white">User settings</h2>
+            <p className="text-sm text-slate-500 dark:text-slate-400">Manage this user's models, language, theme, and restrictions.</p>
+          </div>
+          {!availableModels && (
+            <button
+              type="button"
+              onClick={loadAvailableModels}
+              disabled={modelsLoading}
+              className="rounded-full border border-slate-300 px-4 py-2 text-sm text-slate-600 disabled:opacity-50 dark:border-slate-600 dark:text-slate-300"
+            >
+              {modelsLoading ? "Loading..." : "Load models"}
+            </button>
+          )}
         </div>
+
+        {modelsErr && (
+          <p className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-500/20 dark:text-red-100">
+            {modelsErr}
+          </p>
+        )}
 
         <div className="mt-4 grid gap-4 sm:grid-cols-2">
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
               Text model
             </label>
-            <input
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-              value={settingsTextModel}
-              onChange={(e) => setSettingsTextModel(e.target.value)}
-              placeholder="e.g. gpt-5.4-nano"
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
+            <div className="relative">
+              {availableModels ? (
+                <select
+                  className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 dark:bg-slate-900 dark:text-white ${
+                    testResult
+                      ? testResult.textModel.ok
+                        ? "border-emerald-400 dark:border-emerald-500"
+                        : "border-red-400 dark:border-red-500"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                  value={settingsTextModel}
+                  onChange={(e) => handleSettingsTextModelChange(e.target.value)}
+                >
+                  {availableModels.textModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  value={settingsTextModel}
+                  onChange={(e) => handleSettingsTextModelChange(e.target.value)}
+                  placeholder="e.g. gpt-5.4-nano"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
+              )}
+              {testResult && (
+                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${testResult.textModel.ok ? "text-emerald-500" : "text-red-500"}`}>
+                  {testResult.textModel.ok ? "\u2713" : "\u2717"}
+                </span>
+              )}
+            </div>
+            {testResult?.textModel.error && (
+              <p className="mt-1 text-xs text-red-500">{testResult.textModel.error}</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
               Audio model
             </label>
-            <input
-              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
-              value={settingsAudioModel}
-              onChange={(e) => setSettingsAudioModel(e.target.value)}
-              placeholder="e.g. gpt-4o-mini-tts"
-              spellCheck={false}
-              autoCorrect="off"
-              autoCapitalize="off"
-            />
+            <div className="relative">
+              {availableModels ? (
+                <select
+                  className={`w-full rounded-xl border px-3 py-2 text-sm text-slate-900 dark:bg-slate-900 dark:text-white ${
+                    testResult
+                      ? testResult.audioModel.ok
+                        ? "border-emerald-400 dark:border-emerald-500"
+                        : "border-red-400 dark:border-red-500"
+                      : "border-slate-200 dark:border-slate-700"
+                  }`}
+                  value={settingsAudioModel}
+                  onChange={(e) => handleSettingsAudioModelChange(e.target.value)}
+                >
+                  {availableModels.audioModels.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-900 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                  value={settingsAudioModel}
+                  onChange={(e) => handleSettingsAudioModelChange(e.target.value)}
+                  placeholder="e.g. gpt-4o-mini-tts"
+                  spellCheck={false}
+                  autoCorrect="off"
+                  autoCapitalize="off"
+                />
+              )}
+              {testResult && (
+                <span className={`absolute right-3 top-1/2 -translate-y-1/2 text-sm font-semibold ${testResult.audioModel.ok ? "text-emerald-500" : "text-red-500"}`}>
+                  {testResult.audioModel.ok ? "\u2713" : "\u2717"}
+                </span>
+              )}
+            </div>
+            {testResult?.audioModel.error && (
+              <p className="mt-1 text-xs text-red-500">{testResult.audioModel.error}</p>
+            )}
           </div>
           <div>
             <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
@@ -352,7 +468,15 @@ export function AdminUserDetailPage() {
           </p>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
+        <div className="mt-4 flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={testModels}
+            disabled={testing || !settingsTextModel.trim() || !settingsAudioModel.trim()}
+            className="rounded-full border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200"
+          >
+            {testing ? "Testing..." : "Test models"}
+          </button>
           <button
             type="button"
             onClick={saveSettings}

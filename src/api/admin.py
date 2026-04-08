@@ -1,3 +1,4 @@
+import logging
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -9,6 +10,17 @@ from ..services import decks as deck_service
 from ..services import users as user_service
 from ..settings import ALWAYS_ADMIN_EMAILS, NATIVE_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid, require_admin
+from .profile import (
+    DEFAULT_AUDIO_MODEL,
+    _AUDIO_INCLUDE,
+    _FALLBACK_AUDIO_MODELS,
+    _FALLBACK_TEXT_MODELS,
+    _TEXT_EXCLUDE,
+    _TEXT_INCLUDE,
+    _extract_openai_error,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/admin")
 
@@ -40,6 +52,11 @@ class AdminUserSettingsPayload(BaseModel):
     native_language: Optional[str] = Field(None, alias="nativeLanguage")
     theme: Optional[str] = None
     models_locked: Optional[bool] = Field(None, alias="modelsLocked")
+
+
+class AdminModelTestPayload(BaseModel):
+    text_model: str = Field(..., alias="textModel")
+    audio_model: str = Field(..., alias="audioModel")
 
 
 class SystemSettingsPayload(BaseModel):
@@ -225,6 +242,109 @@ def update_user_settings(
 
     updated = user_service.get_user(user_uuid)
     return {"status": "ok", "user": updated}
+
+
+@router.get("/users/{user_id}/models/available")
+def user_available_models(user_id: str, user=Depends(require_admin)):
+    """Return available models using the managed user's API key."""
+    from ..settings import OPENAI_MODEL
+
+    user_uuid = parse_uuid(user_id, entity="User")
+    if not user_service.get_user(user_uuid):
+        raise HTTPException(status_code=404, detail="User not found.")
+
+    def _is_text(mid: str) -> bool:
+        m = mid.lower()
+        return any(m.startswith(i) or i in m for i in _TEXT_INCLUDE) and not any(
+            e in m for e in _TEXT_EXCLUDE
+        )
+
+    def _is_audio(mid: str) -> bool:
+        return any(i in mid.lower() for i in _AUDIO_INCLUDE)
+
+    if not api_key_service.user_can_generate(user_uuid):
+        return {
+            "textModels": list(_FALLBACK_TEXT_MODELS),
+            "audioModels": list(_FALLBACK_AUDIO_MODELS),
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+        }
+
+    try:
+        client = api_key_service.get_openai_client_for_user(user_uuid)
+        all_ids = sorted((m.id for m in client.models.list().data), key=str.lower)
+    except Exception as exc:
+        logger.warning("Could not fetch model list for user %s: %s", user_id, exc)
+        return {
+            "textModels": list(_FALLBACK_TEXT_MODELS),
+            "audioModels": list(_FALLBACK_AUDIO_MODELS),
+            "defaultTextModel": OPENAI_MODEL,
+            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+        }
+
+    text_models = [m for m in all_ids if _is_text(m)]
+    audio_models = [m for m in all_ids if _is_audio(m)]
+    for m in reversed(_FALLBACK_TEXT_MODELS):
+        if m not in text_models:
+            text_models.insert(0, m)
+    for m in reversed(_FALLBACK_AUDIO_MODELS):
+        if m not in audio_models:
+            audio_models.insert(0, m)
+
+    return {
+        "textModels": text_models,
+        "audioModels": audio_models,
+        "defaultTextModel": OPENAI_MODEL,
+        "defaultAudioModel": DEFAULT_AUDIO_MODEL,
+    }
+
+
+@router.post("/users/{user_id}/models/test")
+def test_user_models(
+    user_id: str, payload: AdminModelTestPayload, user=Depends(require_admin)
+):
+    """Test models using the managed user's API key."""
+    user_uuid = parse_uuid(user_id, entity="User")
+    if not user_service.get_user(user_uuid):
+        raise HTTPException(status_code=404, detail="User not found.")
+    if not api_key_service.user_can_generate(user_uuid):
+        raise HTTPException(
+            status_code=400,
+            detail="This user has no API key. Grant one first.",
+        )
+
+    client = api_key_service.get_openai_client_for_user(user_uuid)
+
+    text_ok = False
+    text_error: Optional[str] = None
+    try:
+        client.chat.completions.create(
+            model=payload.text_model.strip(),
+            messages=[{"role": "user", "content": "Hi"}],
+            max_completion_tokens=10,
+        )
+        text_ok = True
+    except Exception as exc:
+        text_error = _extract_openai_error(exc)
+
+    audio_ok = False
+    audio_error: Optional[str] = None
+    try:
+        resp = client.audio.speech.create(
+            model=payload.audio_model.strip(),
+            voice="alloy",
+            input=".",
+            response_format="mp3",
+        )
+        _ = resp.content
+        audio_ok = True
+    except Exception as exc:
+        audio_error = _extract_openai_error(exc)
+
+    return {
+        "textModel": {"ok": text_ok, "error": text_error},
+        "audioModel": {"ok": audio_ok, "error": audio_error},
+    }
 
 
 @router.get("/default-prompts")
