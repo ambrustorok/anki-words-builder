@@ -5,6 +5,7 @@ import { Layout } from "./components/Layout";
 import { LoadingScreen } from "./components/LoadingScreen";
 import { SessionProvider, useSession } from "./lib/session";
 import { ThemeProvider, ThemePreference } from "./lib/theme";
+import { ExportProvider } from "./lib/export";
 import { DashboardPage } from "./pages/DashboardPage";
 import { OnboardingPage } from "./pages/OnboardingPage";
 import { ProfilePage } from "./pages/ProfilePage";
@@ -26,9 +27,11 @@ function ThemedApp() {
 
   return (
     <ThemeProvider serverPreference={serverTheme}>
-      <ErrorBoundary>
-        <AppRoutes />
-      </ErrorBoundary>
+      <ExportProvider>
+        <ErrorBoundary>
+          <AppRoutes />
+        </ErrorBoundary>
+      </ExportProvider>
     </ThemeProvider>
   );
 }

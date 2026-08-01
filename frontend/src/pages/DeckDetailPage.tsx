@@ -2,7 +2,8 @@ import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { apiFetch, API_BASE_URL, downloadApiFile } from "../lib/api";
+import { apiFetch, API_BASE_URL } from "../lib/api";
+import { useDeckExport } from "../lib/export";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { CardGroupItem } from "../components/CardGroupItem";
 import type { DeckDetailResponse } from "../types";
@@ -11,6 +12,7 @@ export function DeckDetailPage() {
   const { deckId } = useParams();
   const navigate = useNavigate();
   const ankiImportRef = useRef<HTMLInputElement>(null);
+  const { exporting, exportDeck } = useDeckExport();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["deck", deckId],
     queryFn: () => apiFetch<DeckDetailResponse>(`/decks/${deckId}`),
@@ -74,26 +76,22 @@ export function DeckDetailPage() {
             <Link className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center" to={`/decks/${deck.id}/edit`}>
               Edit
             </Link>
-             <a
-               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
-               href={`${API_BASE_URL}/decks/${deck.id}/export?mode=incremental`}
-               onClick={(event) => {
-                 event.preventDefault();
-                 void downloadApiFile(`/decks/${deck.id}/export?mode=incremental`);
-               }}
-             >
-               Export new
-             </a>
-             <a
-               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
-               href={`${API_BASE_URL}/decks/${deck.id}/export?mode=full`}
-               onClick={(event) => {
-                 event.preventDefault();
-                 void downloadApiFile(`/decks/${deck.id}/export?mode=full`);
-               }}
-             >
-               Export full
-             </a>
+              <button
+                type="button"
+                className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={exporting}
+                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=incremental`, "Your deck")}
+              >
+                {exporting ? "Preparing..." : "Export new"}
+              </button>
+              <button
+                type="button"
+                className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={exporting}
+                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=full`, "Your deck")}
+              >
+                {exporting ? "Preparing..." : "Export full"}
+              </button>
             <a
               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
               href={`${API_BASE_URL}/decks/${deck.id}/backup`}

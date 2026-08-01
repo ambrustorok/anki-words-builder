@@ -69,7 +69,8 @@ async function downloadApiFile(path: string) {
   const url = URL.createObjectURL(await response.blob());
   const link = document.createElement("a");
   link.href = url;
-  link.download = "deck.apkg";
+  const filename = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
+  link.download = filename ? decodeURIComponent(filename) : "deck.apkg";
   link.click();
   URL.revokeObjectURL(url);
 }

@@ -1,8 +1,9 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { ReactNode } from "react";
+import { ReactNode, useEffect, useRef } from "react";
 import { useSession } from "../lib/session";
 import { getCloudflareLogoutUrl } from "../lib/logout";
 import { ThemeToggle } from "./ThemeToggle";
+import { useDeckExport } from "../lib/export";
 
 interface LayoutProps {
   children: ReactNode;
@@ -42,6 +43,12 @@ export function Layout({ children }: LayoutProps) {
   const user = session.data?.user;
   const logoutHref = getCloudflareLogoutUrl();
   const location = useLocation();
+  const { exporting } = useDeckExport();
+  const layoutRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    layoutRef.current?.toggleAttribute("inert", exporting);
+  }, [exporting]);
 
   type NavItem = { to: string; label: string; icon: ReactNode };
   const navItems: NavItem[] = [
@@ -56,7 +63,7 @@ export function Layout({ children }: LayoutProps) {
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
 
   return (
-    <div className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <div ref={layoutRef} className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
       {/* Desktop top bar */}
       <header className="hidden md:block border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">

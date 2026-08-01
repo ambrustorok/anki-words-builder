@@ -1,6 +1,7 @@
 import { Link } from "react-router-dom";
 
-import { API_BASE_URL, downloadApiFile } from "../lib/api";
+import { API_BASE_URL } from "../lib/api";
+import { useDeckExport } from "../lib/export";
 
 interface Props {
   deckId: string;
@@ -9,6 +10,7 @@ interface Props {
 }
 
 export function DeckQuickActions({ deckId, className = "", variant = "inline" }: Props) {
+  const { exporting, exportDeck } = useDeckExport();
   const containerClasses = [
     "flex flex-wrap gap-1.5",
     variant === "stacked" ? "mt-3 border-t border-slate-100 pt-3 dark:border-slate-800" : "",
@@ -25,15 +27,30 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
     { label: "Generate cards", to: `/decks/${deckId}/generate`, icon: IconSparkle },
     { label: "View deck", to: `/decks/${deckId}`, icon: IconEye },
     { label: "Edit deck", to: `/decks/${deckId}/edit`, icon: IconEdit },
-    { label: "Export new", href: `${API_BASE_URL}/decks/${deckId}/export?mode=incremental`, download: `/decks/${deckId}/export?mode=incremental`, icon: IconDownload },
-    { label: "Export full", href: `${API_BASE_URL}/decks/${deckId}/export?mode=full`, download: `/decks/${deckId}/export?mode=full`, icon: IconDownload },
+    { label: "Export new", download: `/decks/${deckId}/export?mode=incremental`, icon: IconDownload },
+    { label: "Export full", download: `/decks/${deckId}/export?mode=full`, icon: IconDownload },
     { label: "Backup deck", href: `${API_BASE_URL}/decks/${deckId}/backup`, icon: IconArchive }
   ];
 
   return (
     <div className={containerClasses}>
       {actions.map((action) =>
-        action.to ? (
+        "download" in action ? (
+          <button
+            key={action.label}
+            type="button"
+            className={`${iconButton} bg-white/50 dark:bg-slate-900/40 disabled:cursor-not-allowed disabled:opacity-50`}
+            title={exporting ? "Your deck is being prepared" : action.label}
+            aria-label={action.label}
+            disabled={exporting}
+            onClick={(event) => {
+              event.stopPropagation();
+              void exportDeck(action.download!, "Your deck");
+            }}
+          >
+            <action.icon />
+          </button>
+        ) : action.to ? (
           <Link
             key={action.label}
             className={`${iconButton} bg-white/50 dark:bg-slate-900/40`}
@@ -42,11 +59,6 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
             aria-label={action.label}
             onClick={(event) => {
               event.stopPropagation();
-              const download = (action as { download?: string }).download;
-              if (download) {
-                event.preventDefault();
-                void downloadApiFile(download);
-              }
             }}
             onKeyDown={(event) => event.stopPropagation()}
           >
