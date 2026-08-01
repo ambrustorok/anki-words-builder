@@ -374,6 +374,7 @@ def list_cards_for_deck_paginated(
     limit: int = 50,
     search_query: Optional[str] = None,
     tag_names: Optional[List[str]] = None,
+    difficulties: Optional[List[str]] = None,
 ) -> dict:
     offset = (page - 1) * limit
     with get_connection() as conn:
@@ -382,6 +383,7 @@ def list_cards_for_deck_paginated(
             query_params: list = [_uuid(owner_id), _uuid(deck["id"])]
             search_clause = ""
             tag_clause = ""
+            difficulty_clause = ""
 
             if search_query:
                 search_clause = "AND payload::text ILIKE %s"
@@ -404,10 +406,17 @@ def list_cards_for_deck_paginated(
                 query_params.extend(tag_names)
                 query_params.append(len(tag_names))
 
+            if difficulties:
+                valid = [level for level in difficulties if level in DIFFICULTY_LEVELS]
+                if valid:
+                    placeholders = ",".join(["%s"] * len(valid))
+                    difficulty_clause = f"AND difficulty IN ({placeholders})"
+                    query_params.extend(valid)
+
             count_sql = f"""
                 SELECT COUNT(DISTINCT card_group_id) as total
                 FROM cards
-                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause}
+                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause} {difficulty_clause}
             """
             cur.execute(count_sql, tuple(query_params))
             total_groups = cur.fetchone()["total"]
@@ -415,7 +424,7 @@ def list_cards_for_deck_paginated(
             groups_sql = f"""
                 SELECT card_group_id, MAX(updated_at) as max_updated
                 FROM cards
-                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause}
+                WHERE owner_id = %s AND deck_id = %s {search_clause} {tag_clause} {difficulty_clause}
                 GROUP BY card_group_id
                 ORDER BY max_updated DESC
                 LIMIT %s OFFSET %s

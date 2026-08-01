@@ -4,7 +4,7 @@ import { Link, useParams } from "react-router-dom";
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { CardGroupItem } from "../components/CardGroupItem";
-import type { CardGroup, DeckTag, TagMode } from "../types";
+import type { CardGroup, DeckTag, Difficulty, TagMode } from "../types";
 
 interface DeckCardsResponse {
     cards: CardGroup[];
@@ -17,6 +17,10 @@ interface DeckCardsResponse {
     isFiltered?: boolean;
 }
 
+const difficultyColors: Record<Difficulty, string> = {
+    A1: "#86efac", A2: "#4ade80", B1: "#fde047", B2: "#fb923c", C1: "#f97316", C2: "#ef4444"
+};
+
 export function DeckCardsPage() {
     const { deckId } = useParams();
     const queryClient = useQueryClient();
@@ -24,6 +28,7 @@ export function DeckCardsPage() {
     const [searchTerm, setSearchTerm] = useState("");
     const [debouncedSearch, setDebouncedSearch] = useState("");
     const [activeTagNames, setActiveTagNames] = useState<Set<string>>(new Set());
+    const [activeDifficulties, setActiveDifficulties] = useState<Set<Difficulty>>(new Set());
     const [isBulkTagging, setIsBulkTagging] = useState(false);
     const [bulkTagMessage, setBulkTagMessage] = useState("");
     const limit = 20;
@@ -40,10 +45,10 @@ export function DeckCardsPage() {
     // Reset page when tag filter changes
     useEffect(() => {
         setPage(1);
-    }, [activeTagNames]);
+    }, [activeTagNames, activeDifficulties]);
 
     const { data, isLoading, error, refetch } = useQuery({
-        queryKey: ["deck-cards", deckId, page, debouncedSearch, [...activeTagNames].sort().join(",")],
+        queryKey: ["deck-cards", deckId, page, debouncedSearch, [...activeTagNames].sort().join(","), [...activeDifficulties].sort().join(",")],
         queryFn: () => {
             const params = new URLSearchParams({
                 page: page.toString(),
@@ -51,6 +56,7 @@ export function DeckCardsPage() {
             });
             if (debouncedSearch) params.set("q", debouncedSearch);
             activeTagNames.forEach((name) => params.append("tags", name));
+            activeDifficulties.forEach((level) => params.append("difficulties", level));
             return apiFetch<DeckCardsResponse>(`/decks/${deckId}/cards?${params.toString()}`);
         },
         enabled: Boolean(deckId),
@@ -111,6 +117,8 @@ export function DeckCardsPage() {
     const deckTags = data?.deckTags ?? [];
     const tagMode = data?.tagMode ?? "off";
     const hasTagFilter = activeTagNames.size > 0;
+    const hasDifficultyFilter = activeDifficulties.size > 0;
+    const hasFilter = hasTagFilter || hasDifficultyFilter;
 
     if (error) {
         return <p className="p-6 text-red-500">Failed to load cards: {(error as Error).message}</p>;
@@ -159,6 +167,20 @@ export function DeckCardsPage() {
                     {bulkTagMessage}
                 </p>
             )}
+
+            <div className="flex flex-wrap items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">Difficulty:</span>
+                {(["A1", "A2", "B1", "B2", "C1", "C2"] as Difficulty[]).map((level) => {
+                    const active = activeDifficulties.has(level);
+                    const color = difficultyColors[level];
+                    return <button key={level} type="button" onClick={() => setActiveDifficulties((prev) => {
+                        const next = new Set(prev);
+                        if (next.has(level)) next.delete(level); else next.add(level);
+                        return next;
+                    })} className="rounded-full border-2 px-3 py-1 text-xs font-medium transition-all" style={active ? { borderColor: color, backgroundColor: `${color}33`, color } : { borderColor: `${color}55`, color: `${color}99` }}>{level}</button>;
+                })}
+                {hasDifficultyFilter && <button type="button" onClick={() => setActiveDifficulties(new Set())} className="rounded-full border border-slate-300 px-3 py-1 text-xs text-slate-500 hover:border-slate-500 dark:border-slate-600 dark:text-slate-400">Clear difficulty</button>}
+            </div>
 
             {/* Tag filter chips — only when deck has tags */}
             {tagMode !== "off" && deckTags.length > 0 && (
@@ -210,7 +232,7 @@ export function DeckCardsPage() {
                     ))
                 ) : (
                     <p className="rounded-3xl border border-dashed border-slate-200 bg-white px-6 py-8 text-center text-sm text-slate-500 dark:border-slate-800 dark:bg-slate-900/70 dark:text-slate-300">
-                        {hasTagFilter ? "No cards match the selected tags." : "No cards found."}
+                        {hasFilter ? "No cards match the selected filters." : "No cards found."}
                     </p>
                 )}
             </div>
@@ -226,7 +248,7 @@ export function DeckCardsPage() {
                     </button>
                     <span className="flex items-center px-2 text-sm text-slate-600 dark:text-slate-400">
                         Page {page} of {data.pages}
-                        {hasTagFilter && <span className="ml-2 text-xs text-slate-400">(filtered)</span>}
+                        {hasFilter && <span className="ml-2 text-xs text-slate-400">(filtered)</span>}
                     </span>
                     <button
                         disabled={page >= data.pages}

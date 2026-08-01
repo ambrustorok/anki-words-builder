@@ -213,6 +213,7 @@ def list_deck_cards(
     limit: int = Query(50, ge=1, le=200),
     q: Optional[str] = Query(None, max_length=200),
     tags: Optional[List[str]] = Query(None),
+    difficulties: Optional[List[str]] = Query(None),
     user=Depends(get_current_user),
 ):
     deck_uuid = parse_uuid(deck_id, entity="Deck")
@@ -228,13 +229,14 @@ def list_deck_cards(
         limit=limit,
         search_query=q,
         tag_names=tags or [],
+        difficulties=difficulties or [],
     )
     # Also return the deck's tag definitions so the UI can render filter chips
     deck_tags = tag_service.list_deck_tags(deck_uuid)
     result["deckTags"] = deck_tags
     result["tagMode"] = deck.get("tag_mode", "off")
 
-    result["isFiltered"] = bool(tags or q)
+    result["isFiltered"] = bool(tags or difficulties or q)
     return result
 
 
