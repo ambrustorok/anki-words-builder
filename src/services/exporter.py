@@ -108,7 +108,7 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
             note_guid = stable_card_guid(entry_uuid, card.get("direction") or "forward")
             # Anki requires tags to have no spaces — replace with underscore.
             # Also deduplicate and skip empty strings.
-            raw_tags = card.get("tag_names") or []
+            raw_tags = [*(card.get("tag_names") or []), card.get("difficulty")]
             safe_tags = list(
                 dict.fromkeys(
                     t.strip().replace(" ", "_") for t in raw_tags if t and t.strip()
