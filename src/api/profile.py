@@ -1,4 +1,3 @@
-import logging
 from typing import Optional
 from uuid import UUID
 
@@ -6,49 +5,13 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 
 from ..services import api_keys as api_key_service
+from ..services import models as model_service
 from ..services import users as user_service
-from ..settings import NATIVE_LANGUAGE_OPTIONS, OPENAI_MODEL
+from ..settings import NATIVE_LANGUAGE_OPTIONS
 from .dependencies import get_current_user, parse_uuid
 from .session import _build_logout_url
 
-logger = logging.getLogger(__name__)
-
 router = APIRouter(prefix="/profile")
-
-DEFAULT_AUDIO_MODEL = "gpt-4o-mini-tts"
-
-# Curated list shown when the API can't be reached or returns nothing useful.
-_FALLBACK_TEXT_MODELS = [
-    "gpt-5.4-nano",
-    "gpt-4o",
-    "gpt-4o-mini",
-    "o4-mini",
-    "o3",
-    "o1",
-    "chatgpt-4o-latest",
-]
-_FALLBACK_AUDIO_MODELS = [
-    "gpt-4o-mini-tts",
-    "tts-1",
-    "tts-1-hd",
-]
-
-# ---- ID-pattern classification (best available without capability metadata) ----
-_TEXT_INCLUDE = ("gpt-", "o1", "o3", "o4", "o5", "chatgpt")
-_TEXT_EXCLUDE = (
-    "tts",
-    "realtime",
-    "transcribe",
-    "whisper",
-    "dall",
-    "embedding",
-    "search",
-    "moderation",
-    "audio",
-    "instruct",
-    "vision-preview",
-)
-_AUDIO_INCLUDE = ("tts",)
 
 
 class APIKeyPayload(BaseModel):
@@ -136,59 +99,7 @@ def update_native_language(
 
 @router.get("/models/available")
 def available_models(user=Depends(get_current_user)):
-    """
-    Return model lists for the dropdown. Uses the OpenAI /models endpoint
-    when a key is available, falls back to a curated list otherwise.
-    The API returns only id/created/object/owned_by — no capability field —
-    so we classify by ID pattern.
-    """
-
-    def _is_text(mid: str) -> bool:
-        m = mid.lower()
-        return any(m.startswith(i) or i in m for i in _TEXT_INCLUDE) and not any(
-            e in m for e in _TEXT_EXCLUDE
-        )
-
-    def _is_audio(mid: str) -> bool:
-        return any(i in mid.lower() for i in _AUDIO_INCLUDE)
-
-    if not api_key_service.user_can_generate(user["id"]):
-        return {
-            "textModels": _FALLBACK_TEXT_MODELS,
-            "audioModels": _FALLBACK_AUDIO_MODELS,
-            "defaultTextModel": OPENAI_MODEL,
-            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
-        }
-
-    try:
-        client = api_key_service.get_openai_client_for_user(user["id"])
-        all_ids = sorted((m.id for m in client.models.list().data), key=str.lower)
-    except Exception as exc:
-        logger.warning("Could not fetch model list: %s", exc)
-        return {
-            "textModels": _FALLBACK_TEXT_MODELS,
-            "audioModels": _FALLBACK_AUDIO_MODELS,
-            "defaultTextModel": OPENAI_MODEL,
-            "defaultAudioModel": DEFAULT_AUDIO_MODEL,
-        }
-
-    text_models = [m for m in all_ids if _is_text(m)]
-    audio_models = [m for m in all_ids if _is_audio(m)]
-
-    # Ensure the curated defaults always appear at the top
-    for m in reversed(_FALLBACK_TEXT_MODELS):
-        if m not in text_models:
-            text_models.insert(0, m)
-    for m in reversed(_FALLBACK_AUDIO_MODELS):
-        if m not in audio_models:
-            audio_models.insert(0, m)
-
-    return {
-        "textModels": text_models,
-        "audioModels": audio_models,
-        "defaultTextModel": OPENAI_MODEL,
-        "defaultAudioModel": DEFAULT_AUDIO_MODEL,
-    }
+    return model_service.available_models(user["id"])
 
 
 @router.post("/models/test")
@@ -204,56 +115,7 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
             detail="Add an OpenAI API key before testing models.",
         )
 
-    client = api_key_service.get_openai_client_for_user(user["id"])
-
-    # --- Text model: cheapest possible call ---
-    # Try max_completion_tokens first (required by gpt-5, o-series and newer).
-    # If that fails for any reason, retry with legacy max_tokens.
-    # Only report failure if both attempts fail.
-    # --- Text model: cheapest possible call ---
-    # Don't set any token limit — 1 token causes some models to 400 saying
-    # they couldn't finish. We only care that the API accepts the request.
-    text_ok = False
-    text_error: Optional[str] = None
-    _model = payload.text_model.strip()
-    try:
-        client.chat.completions.create(
-            model=_model,
-            messages=[{"role": "user", "content": "Hi"}],
-            max_completion_tokens=10,
-        )
-        text_ok = True
-    except Exception as exc:
-        text_error = _extract_openai_error(exc)
-
-    # --- Audio model: shortest possible TTS input ---
-    audio_ok = False
-    audio_error: Optional[str] = None
-    try:
-        resp = client.audio.speech.create(
-            model=payload.audio_model.strip(),
-            voice="alloy",
-            input=".",
-            response_format="mp3",
-        )
-        # Read and immediately discard — we only care if it didn't error.
-        _ = resp.content
-        audio_ok = True
-    except Exception as exc:
-        audio_error = _extract_openai_error(exc)
-
-    return {
-        "textModel": {"ok": text_ok, "error": text_error},
-        "audioModel": {"ok": audio_ok, "error": audio_error},
-    }
-
-
-def _extract_openai_error(exc: Exception) -> str:
-    """Pull the most useful message out of an OpenAI (or generic) exception."""
-    # openai SDK wraps errors in APIStatusError / APIConnectionError etc.
-    msg = getattr(exc, "message", None) or str(exc)
-    # Trim long stack traces that sometimes appear in the message
-    return msg.split("\n")[0][:200]
+    return model_service.test_models(user["id"], payload.text_model, payload.audio_model)
 
 
 @router.put("/theme")

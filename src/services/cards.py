@@ -1023,10 +1023,6 @@ def get_card_audio(
             return bytes(row[0])
 
 
-def restore_cards(owner_id: uuid.UUID, deck_id: uuid.UUID, cards: List[dict]) -> int:
-    return restore_cards_with_policy(owner_id, deck_id, cards, mode="replace")
-
-
 def restore_cards_with_policy(
     owner_id: uuid.UUID,
     deck_id: uuid.UUID,

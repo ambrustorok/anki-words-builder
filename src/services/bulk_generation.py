@@ -140,24 +140,6 @@ def generate_cell(
         return result
     except Exception:
         return []
-        result = []
-        for item in candidates:
-            if not isinstance(item, dict):
-                continue
-            fp = str(item.get("foreign_phrase", "")).strip()
-            np_ = str(item.get("native_phrase", "")).strip()
-            es = str(item.get("example_sentence", "")).strip()
-            if fp:
-                result.append(
-                    {
-                        "foreign_phrase": fp,
-                        "native_phrase": np_,
-                        "example_sentence": es,
-                    }
-                )
-        return result
-    except Exception:
-        return []
 
 
 # ---------------------------------------------------------------------------

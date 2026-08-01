@@ -266,12 +266,6 @@ def get_tags_for_card_groups(card_group_ids: List[str]) -> dict:
     return result
 
 
-def get_tag_names_for_export(card_group_id: uuid.UUID) -> List[str]:
-    """Return just the tag name strings for Anki export."""
-    tags = get_card_group_tags(card_group_id)
-    return [t["name"] for t in tags]
-
-
 # ---------------------------------------------------------------------------
 # Tag mode on deck
 # ---------------------------------------------------------------------------

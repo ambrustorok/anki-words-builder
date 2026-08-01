@@ -9,15 +9,12 @@ from psycopg2.extras import Json, RealDictCursor
 
 from ..db.core import get_connection
 
-_KEY_OPENAI_API_BASE = "openai_api_base"
-
-
-def get_setting(key: str) -> Optional[str]:
+def get_openai_api_base() -> Optional[str]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 "SELECT value FROM app_settings WHERE key = %s",
-                (key,),
+                ("openai_api_base",),
             )
             row = cur.fetchone()
     if not row:
@@ -29,8 +26,7 @@ def get_setting(key: str) -> Optional[str]:
     return None
 
 
-def set_setting(key: str, value: Optional[str]) -> None:
-    """Upsert a string setting. Pass None or '' to clear it."""
+def set_openai_api_base(value: Optional[str]) -> None:
     stored = (value or "").strip()
     with get_connection() as conn:
         with conn.cursor() as cur:
@@ -42,19 +38,6 @@ def set_setting(key: str, value: Optional[str]) -> None:
                     SET value = EXCLUDED.value,
                         updated_at = NOW()
                 """,
-                (key, Json(stored)),
+                ("openai_api_base", Json(stored)),
             )
         conn.commit()
-
-
-# ---- Typed helpers ----
-
-
-def get_openai_api_base() -> Optional[str]:
-    """Returns the configured OpenAI API base URL, or None to use the default."""
-    v = get_setting(_KEY_OPENAI_API_BASE)
-    return v if v else None
-
-
-def set_openai_api_base(url: Optional[str]) -> None:
-    set_setting(_KEY_OPENAI_API_BASE, url)

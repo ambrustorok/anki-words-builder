@@ -12,8 +12,7 @@ import { ProfilePage } from "./pages/ProfilePage";
 import { DeckListPage } from "./pages/DeckListPage";
 import { DeckDetailPage } from "./pages/DeckDetailPage";
 import { DeckEditorPage } from "./pages/DeckEditorPage";
-import { CardCreatePage } from "./pages/CardCreatePage";
-import { CardEditPage } from "./pages/CardEditPage";
+import { CardFormPage } from "./pages/CardFormPage";
 import { DeckCardsPage } from "./pages/DeckCardsPage";
 import { GenerateCardsPage } from "./pages/GenerateCardsPage";
 import { AdminUsersPage } from "./pages/AdminUsersPage";
@@ -61,8 +60,8 @@ function AppRoutes() {
         <Route path="/decks/:deckId/generate" element={<GenerateCardsPage />} />
         <Route path="/decks/:deckId/edit" element={<DeckEditorPage mode="edit" />} />
         <Route path="/help" element={<HelpPage />} />
-        <Route path="/cards/new/:deckId" element={<CardCreatePage />} />
-        <Route path="/cards/:groupId/edit" element={<CardEditPage />} />
+        <Route path="/cards/new/:deckId" element={<CardFormPage mode="create" />} />
+        <Route path="/cards/:groupId/edit" element={<CardFormPage mode="edit" />} />
         <Route path="/admin/users" element={<AdminUsersPage />} />
         <Route path="/admin/users/:userId" element={<AdminUserDetailPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />

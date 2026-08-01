@@ -95,7 +95,6 @@ export interface GenerationCandidate {
 
   // UI state (not from API)
   accepted: boolean;
-  editing: boolean;
   /** Tag IDs the user has selected (starts as suggested_tag_ids) */
   tagIds: string[];
   /** Editable payload fields */
@@ -103,7 +102,7 @@ export interface GenerationCandidate {
 }
 
 export interface GenerationPreviewResponse {
-  candidates: Omit<GenerationCandidate, "accepted" | "editing" | "tagIds" | "payload">[];
+  candidates: Omit<GenerationCandidate, "accepted" | "tagIds" | "payload">[];
   totalGenerated: number;
   steps: string[];
 }

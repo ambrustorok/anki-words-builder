@@ -378,42 +378,6 @@ def list_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
     return _hydrate_deck_stats(rows)
 
 
-def list_least_recent_decks(owner_id: uuid.UUID, limit: int = 3) -> List[dict]:
-    with get_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                SELECT d.id,
-                       d.anki_id,
-                       d.name,
-                       d.target_language,
-                       d.field_schema,
-                       d.prompt_templates,
-                       d.tag_mode,
-
-                       d.created_at,
-                       d.updated_at,
-                       GREATEST(
-                           d.updated_at,
-                           COALESCE(MAX(c.updated_at), d.updated_at)
-                       ) AS last_modified_at,
-                       COALESCE(COUNT(c.id), 0) AS card_count,
-                       COALESCE(COUNT(DISTINCT c.card_group_id), 0) AS entry_count
-                FROM decks d
-                LEFT JOIN cards c ON c.deck_id = d.id AND c.owner_id = %s
-                WHERE d.owner_id = %s
-                GROUP BY d.id
-                ORDER BY last_modified_at ASC NULLS FIRST
-                LIMIT %s
-                """,
-                (_uuid(owner_id), _uuid(owner_id), max(1, int(limit))),
-            )
-            rows = cur.fetchall()
-    for row in rows:
-        row["field_schema"] = normalize_field_schema(row.get("field_schema"))
-    return _hydrate_deck_stats(rows)
-
-
 def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

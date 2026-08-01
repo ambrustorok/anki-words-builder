@@ -116,7 +116,6 @@ export function DeckEditorPage({ mode }: Props) {
   const [deleting, setDeleting] = useState(false);
   // Tag state
   const [tagMode, setTagMode] = useState<TagMode>("off");
-  const [tagMulti, setTagMulti] = useState(true);
   const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
   const [newTagName, setNewTagName] = useState("");
   const [newTagCategory, setNewTagCategory] = useState("");
@@ -194,10 +193,9 @@ export function DeckEditorPage({ mode }: Props) {
       setCardTemplates(mergedCardTemplates);
       // Load tags
       if (deckData.tagMode) setTagMode(deckData.tagMode);
-      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode; tag_multi: boolean }>(`/tags/decks/${deckIdentifier}/tags`).then((resp) => {
+      apiFetch<{ tags: DeckTag[]; tag_mode: TagMode }>(`/tags/decks/${deckIdentifier}/tags`).then((resp) => {
         setDeckTags(resp.tags);
         setTagMode(resp.tag_mode || deckData.tagMode || "off");
-        setTagMulti(resp.tag_multi !== false);
       }).catch(() => {});
     }
   }, [deckData, mode]);
@@ -239,11 +237,6 @@ export function DeckEditorPage({ mode }: Props) {
 
   const handleTagModeChange = (nextMode: TagMode) => {
     setTagMode(nextMode);
-    // Saved on form submit, not immediately
-  };
-
-  const handleTagMultiChange = (next: boolean) => {
-    setTagMulti(next);
     // Saved on form submit, not immediately
   };
 

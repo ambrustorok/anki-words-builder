@@ -68,7 +68,6 @@ function buildCandidates(raw: GenerationPreviewResponse["candidates"]): Generati
   return raw.map((c) => ({
     ...c,
     accepted: true,
-    editing: false,
     tagIds: [...c.suggested_tag_ids],
 
     payload: {
