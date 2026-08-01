@@ -3,6 +3,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
+import { useSession } from "../lib/session";
 import { LoadingScreen } from "../components/LoadingScreen";
 import type { DeckDetailResponse, DeckField, DeckTag, Difficulty, TagMode } from "../types";
 
@@ -96,6 +97,7 @@ function persistStoredVoice(voice: string) {
 export function CardFormPage({ mode }: Props) {
   const params = useParams();
   const navigate = useNavigate();
+  const session = useSession();
   const deckIdParam = params.deckId;
   const groupId = params.groupId;
 
@@ -239,7 +241,11 @@ export function CardFormPage({ mode }: Props) {
   };
 
   const changeInputMode = (nextMode: "foreign" | "native") => {
+    if (nextMode === activeInputMode) return;
     setInputMode(nextMode);
+    const inactiveField = nextMode === "native" ? "foreign_phrase" : "native_phrase";
+    setPayload((prev) => ({ ...prev, [inactiveField]: "" }));
+    persistStoredPhrases({ [inactiveField]: "" });
     if (typeof window !== "undefined") {
       window.localStorage.setItem(LOCAL_INPUT_MODE_KEY, nextMode);
     }
@@ -339,6 +345,9 @@ export function CardFormPage({ mode }: Props) {
     setMessage("");
     setError("");
     const processingAction = action === "populate_all";
+    const actionPayload = mode === "create" && !detailsUnlocked
+      ? { ...payload, [activeInputMode === "native" ? "foreign_phrase" : "native_phrase"]: "" }
+      : payload;
     if (processingAction) {
       setIsProcessing(true);
     }
@@ -350,7 +359,7 @@ export function CardFormPage({ mode }: Props) {
           groupId,
           mode,
           action,
-          payload,
+          payload: actionPayload,
           directions,
           audioPreview,
           audioUrl,
@@ -419,6 +428,15 @@ export function CardFormPage({ mode }: Props) {
     return <p className="text-red-500">Deck not found.</p>;
   }
 
+  const learnedPhraseLabel = `${deck.target_language} phrase`;
+  const nativeLanguage = session.data?.user.nativeLanguage ?? "Native-language";
+  const nativePhraseLabel = `${nativeLanguage} phrase`;
+  const labelForField = (field: DeckField) => {
+    if (field.key === "foreign_phrase") return learnedPhraseLabel;
+    if (field.key === "native_phrase") return nativePhraseLabel;
+    return field.label;
+  };
+
   return (
     <section className="mx-auto max-w-4xl space-y-6">
       <div className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
@@ -456,7 +474,7 @@ export function CardFormPage({ mode }: Props) {
                 : "Enter whichever phrase you know first, then let the generator fill the rest."}
             </p>
           </div>
-          {mode === "create" && (
+          {mode === "create" && !detailsUnlocked && (
             <div className="inline-flex overflow-hidden rounded-full border border-slate-200 dark:border-slate-700">
               <button
                 type="button"
@@ -467,7 +485,7 @@ export function CardFormPage({ mode }: Props) {
                     : "bg-transparent text-slate-600 dark:text-slate-300"
                 }`}
               >
-                Foreign phrase
+                {learnedPhraseLabel}
               </button>
               <button
                 type="button"
@@ -479,7 +497,7 @@ export function CardFormPage({ mode }: Props) {
                     : "bg-transparent text-slate-600 dark:text-slate-300"
                 } ${nativeFieldAvailable ? "" : "opacity-50"}`}
               >
-                Native phrase
+                {nativePhraseLabel}
               </button>
             </div>
           )}
@@ -487,7 +505,7 @@ export function CardFormPage({ mode }: Props) {
 
         <form className="mt-4 space-y-3" onSubmit={(event) => event.preventDefault()}>
           <label className="block text-sm text-slate-700 dark:text-slate-300">
-            {inputField?.label ?? (activeInputMode === "native" ? "Native phrase" : "Foreign phrase")}
+            {inputField ? labelForField(inputField) : activeInputMode === "native" ? nativePhraseLabel : learnedPhraseLabel}
             <textarea
               className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-base dark:border-slate-700 dark:bg-slate-900"
               rows={3}
@@ -540,7 +558,7 @@ export function CardFormPage({ mode }: Props) {
                 .filter((field) => field.key !== inputFieldKey)
                 .map((field) => (
                   <label key={field.key} className="block text-sm text-slate-700 dark:text-slate-300">
-                    {field.label}
+                    {labelForField(field)}
                     <textarea
                       className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 dark:border-slate-700 dark:bg-slate-900"
                       rows={field.required ? 3 : 2}
