@@ -32,6 +32,7 @@ class PreviewRequest(BaseModel):
     exclusive_constraints: Dict[str, List[str]] = Field(
         default_factory=dict, alias="exclusiveConstraints"
     )
+    difficulties: List[str] = Field(default_factory=list)
     cards_per_cell: int = Field(2, ge=1, le=MAX_CARDS_PER_CELL, alias="cardsPerCell")
     directions: List[str] = Field(default_factory=lambda: ["forward", "backward"])
 
@@ -42,10 +43,19 @@ class PreviewRequest(BaseModel):
             raise ValueError("cardType must be 'word' or 'sentence'.")
         return v
 
+    @field_validator("difficulties")
+    @classmethod
+    def _validate_difficulties(cls, values: List[str]) -> List[str]:
+        valid = {"A1", "A2", "B1", "B2", "C1", "C2"}
+        if any(value not in valid for value in values):
+            raise ValueError("difficulties must contain CEFR levels A1 through C2.")
+        return list(dict.fromkeys(values))
+
 
 class SaveCard(BaseModel):
     payload: Dict[str, str]
     tag_ids: List[str] = Field(default_factory=list, alias="tagIds")
+    difficulty: Optional[str] = None
 
 
 class SaveRequest(BaseModel):
@@ -89,46 +99,17 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
 
     client = api_key_service.get_openai_client_for_user(user["id"])
     model = user.get("text_model") or None
-    audio_model = user.get("audio_model") or None
-
     target_language = deck["target_language"]
     native_language = user.get("native_language") or "English"
     available_tags = tag_service.list_deck_tags(deck_uuid)
     tag_by_id = {str(t["id"]): t for t in available_tags}
 
     # ---- Build constraint cells ----
-    # Each cell is a list of {name, category} dicts (one per exclusive category).
-    # If no constraints given, we generate one unconstrained cell.
-    cells: List[List[Dict]] = []
-    prefilled_by_phrase: Dict[str, List[str]] = {}  # filled after generation
-
-    if body.exclusive_constraints:
-        # Resolve tag IDs → tag objects, group by category
-        category_tag_lists: List[List[Dict]] = []
-        for cat_name, tag_ids in body.exclusive_constraints.items():
-            if not tag_ids:
-                continue
-            resolved = []
-            for tid in tag_ids:
-                t = tag_by_id.get(tid)
-                if t:
-                    resolved.append(
-                        {
-                            "name": t["name"],
-                            "category": t.get("category", cat_name),
-                            "id": tid,
-                        }
-                    )
-            if resolved:
-                category_tag_lists.append(resolved)
-
-        if category_tag_lists:
-            # Cartesian product of selected tags across categories
-            cells = _cartesian(category_tag_lists)
-        else:
-            cells = [[]]
-    else:
-        cells = [[]]
+    # Difficulty is one axis. A single topic/custom-tag category may supply the
+    # other axis; each selected tag becomes one bundle in the Cartesian product.
+    cells = _build_constraint_cells(
+        body.difficulties, body.exclusive_constraints, tag_by_id
+    )
 
     if len(cells) > MAX_CELLS:
         raise HTTPException(
@@ -150,10 +131,12 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
 
     schema = deck.get("field_schema") or []
 
-    for cell_tags in cells:
+    for difficulty, cell_tags in cells:
         cell_label = (
             " + ".join(t["name"] for t in cell_tags) if cell_tags else "unconstrained"
         )
+        if difficulty:
+            cell_label = f"{difficulty} + {cell_label}"
         raw = bulk_gen.generate_cell(
             client,
             card_type=body.card_type,
@@ -161,6 +144,7 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
             native_language=native_language,
             description=body.description,
             constraint_tags=cell_tags,
+            difficulty=difficulty,
             count=body.cards_per_cell,
             field_schema=schema,
             model=model,
@@ -169,6 +153,7 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
         for item in raw:
             item["ephemeral_id"] = str(uuid.uuid4())
             item["cell_tags"] = cell_tags  # [{name, category, id}]
+            item["difficulty"] = difficulty
         all_candidates.extend(raw)
         step_log.append(f"Generated {len(raw)} candidates for [{cell_label}]")
 
@@ -187,7 +172,14 @@ def preview(body: PreviewRequest, user=Depends(get_current_user)):
         )
         step_log.append("Enriched dictionary entries")
 
-    # ---- Phase 4: batch tag inference ----
+    # ---- Phase 4: infer card difficulty, then topic tags ----
+    missing_difficulty = [c for c in all_candidates if not c.get("difficulty")]
+    if missing_difficulty:
+        bulk_gen.batch_infer_difficulties(
+            client, missing_difficulty, target_language, model=model
+        )
+        step_log.append("Inferred card difficulty")
+
     # Pre-fill constraint tags per phrase
     prefilled: Dict[str, List[str]] = {}
     for c in all_candidates:
@@ -286,6 +278,7 @@ def save(body: SaveRequest, user=Depends(get_current_user)):
                 directions,
                 native_language,
                 audio_bytes=audio_bytes,
+                difficulty=card.difficulty,
             )
             group_ids.append(str(group_id))
 
@@ -311,9 +304,19 @@ def save(body: SaveRequest, user=Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 
 
-def _cartesian(lists: List[List[Dict]]) -> List[List[Dict]]:
-    """Cartesian product of tag lists across categories."""
-    result: List[List[Dict]] = [[]]
-    for lst in lists:
-        result = [existing + [item] for existing in result for item in lst]
-    return result
+def _build_constraint_cells(
+    difficulties: List[str], constraints: Dict[str, List[str]], tag_by_id: Dict[str, dict]
+) -> List[tuple[Optional[str], List[Dict]]]:
+    selected_categories = []
+    for category, tag_ids in constraints.items():
+        tags = []
+        for tag_id in tag_ids:
+            tag = tag_by_id.get(tag_id)
+            if tag:
+                tags.append({"name": tag["name"], "category": tag.get("category", category), "id": tag_id})
+        if tags:
+            selected_categories.append(tags)
+    if len(selected_categories) > 1:
+        raise HTTPException(status_code=400, detail="Select tags from one category at a time when generating cards.")
+    bundles = [[tag] for tag in selected_categories[0]] if selected_categories else [[]]
+    return [(difficulty, bundle) for difficulty in (difficulties or [None]) for bundle in bundles]

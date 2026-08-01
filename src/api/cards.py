@@ -67,6 +67,7 @@ class CardActionRequest(BaseModel):
     )
     input_mode: Literal["foreign", "native"] = Field("foreign", alias="inputMode")
     tag_ids: List[str] = Field(default_factory=list, alias="tagIds")
+    difficulty: Optional[str] = None
 
     @field_validator("payload")
     @classmethod
@@ -447,6 +448,7 @@ async def _handle_action(
         return {
             "status": "ok",
             "suggestedTagNames": suggested,
+            "suggestedDifficulty": generation_service.infer_difficulty(client, payload, deck["target_language"]),
             "payload": payload,
             "directions": directions,
             "audioPreview": audio_preview_b64,
@@ -586,7 +588,12 @@ async def _handle_action(
                 raise HTTPException(
                     status_code=500, detail=f"Audio generation failed: {exc}"
                 ) from exc
-        # Auto-infer tags if deck tag mode is 'auto'
+        # Difficulty is always inferred during creation; topic tags remain optional.
+        suggested_difficulty = generation_service.infer_difficulty(
+            client, payload, deck["target_language"]
+        )
+
+        # Auto-infer topic tags if deck tag mode is 'auto'
         suggested_tag_names: List[str] = []
         if tag_service.get_deck_tag_mode(deck) == "auto":
             available_tags = tag_service.list_deck_tags(deck_uuid)
@@ -600,6 +607,7 @@ async def _handle_action(
             "directions": directions,
             "audioPreview": audio_preview_b64,
             "suggestedTagNames": suggested_tag_names,
+            "suggestedDifficulty": suggested_difficulty,
         }
 
     if request.action == "save":
@@ -641,6 +649,12 @@ async def _handle_action(
                         status_code=500, detail=f"Audio generation failed: {exc}"
                     ) from exc
 
+        difficulty = request.difficulty
+        if request.mode == "create" and not difficulty and client:
+            difficulty = generation_service.infer_difficulty(
+                client, payload, deck["target_language"]
+            )
+
         if request.mode == "create":
             try:
                 group_id = card_service.create_cards(
@@ -650,6 +664,7 @@ async def _handle_action(
                     directions,
                     native_language,
                     audio_bytes=audio_bytes,
+                    difficulty=difficulty,
                 )
             except ValueError as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -671,6 +686,7 @@ async def _handle_action(
                 payload,
                 directions,
                 audio_bytes,
+                difficulty=difficulty,
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
@@ -713,6 +729,9 @@ def get_card_group(group_id: str, user=Depends(get_current_user)):
             "created_at": group.get("created_at"),
             "updated_at": group.get("updated_at"),
             "tags": tags,
+            "difficulty": group.get("difficulty"),
+            "ankiFrontOverride": group.get("anki_front_override"),
+            "ankiBackOverride": group.get("anki_back_override"),
         },
         "audioPreview": audio_preview,
         "audioPreferences": _default_audio_preferences(deck),

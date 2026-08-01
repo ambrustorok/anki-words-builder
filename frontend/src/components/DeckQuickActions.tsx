@@ -1,6 +1,6 @@
 import { Link } from "react-router-dom";
 
-import { API_BASE_URL } from "../lib/api";
+import { API_BASE_URL, downloadApiFile } from "../lib/api";
 
 interface Props {
   deckId: string;
@@ -25,7 +25,8 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
     { label: "Generate cards", to: `/decks/${deckId}/generate`, icon: IconSparkle },
     { label: "View deck", to: `/decks/${deckId}`, icon: IconEye },
     { label: "Edit deck", to: `/decks/${deckId}/edit`, icon: IconEdit },
-    { label: "Export to Anki", href: `${API_BASE_URL}/decks/${deckId}/export`, icon: IconDownload },
+    { label: "Export new", href: `${API_BASE_URL}/decks/${deckId}/export?mode=incremental`, download: `/decks/${deckId}/export?mode=incremental`, icon: IconDownload },
+    { label: "Export full", href: `${API_BASE_URL}/decks/${deckId}/export?mode=full`, download: `/decks/${deckId}/export?mode=full`, icon: IconDownload },
     { label: "Backup deck", href: `${API_BASE_URL}/decks/${deckId}/backup`, icon: IconArchive }
   ];
 
@@ -39,7 +40,14 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
             to={action.to}
             title={action.label}
             aria-label={action.label}
-            onClick={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation();
+              const download = (action as { download?: string }).download;
+              if (download) {
+                event.preventDefault();
+                void downloadApiFile(download);
+              }
+            }}
             onKeyDown={(event) => event.stopPropagation()}
           >
             <action.icon />

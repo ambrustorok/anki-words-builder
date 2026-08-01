@@ -58,4 +58,20 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   return (data as T) ?? (undefined as T);
 }
 
-export { API_BASE_URL, ApiError, apiFetch };
+async function downloadApiFile(path: string) {
+  const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
+  if (!response.ok) {
+    const data = await response.json().catch(() => undefined);
+    window.alert(data?.detail || response.statusText || "Download failed.");
+    return;
+  }
+
+  const url = URL.createObjectURL(await response.blob());
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = "deck.apkg";
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+export { API_BASE_URL, ApiError, apiFetch, downloadApiFile };

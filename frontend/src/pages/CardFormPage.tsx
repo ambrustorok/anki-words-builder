@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { apiFetch } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
-import type { DeckDetailResponse, DeckField, DeckTag, TagMode } from "../types";
+import type { DeckDetailResponse, DeckField, DeckTag, Difficulty, TagMode } from "../types";
 
 interface CardGroupResponse {
   deck: DeckDetailResponse["deck"];
@@ -13,6 +13,7 @@ interface CardGroupResponse {
     payload: Record<string, string>;
     directions: string[];
     tags?: DeckTag[];
+    difficulty?: Difficulty;
   };
   audioPreview: string;
   audioPreferences: { voice: string; instructions: string };
@@ -34,6 +35,7 @@ interface CardActionResponse {
   directions?: string[];
   audioPreview?: string;
   suggestedTagNames?: string[];
+  suggestedDifficulty?: Difficulty;
 }
 
 interface Props {
@@ -142,6 +144,7 @@ export function CardFormPage({ mode }: Props) {
   const [deckTags, setDeckTags] = useState<DeckTag[]>([]);
   const [tagMode, setTagMode] = useState<TagMode>("off");
   const [selectedTagIds, setSelectedTagIds] = useState<Set<string>>(new Set());
+  const [difficulty, setDifficulty] = useState<Difficulty | undefined>();
   const [suggestedTagNames, setSuggestedTagNames] = useState<string[]>([]);
   const [isSuggestingTags, setIsSuggestingTags] = useState(false);
 
@@ -184,6 +187,7 @@ export function CardFormPage({ mode }: Props) {
       if (groupQuery.data.group.tags) {
         setSelectedTagIds(new Set(groupQuery.data.group.tags.map((t) => t.id)));
       }
+      setDifficulty(groupQuery.data.group.difficulty);
     }
   }, [groupQuery.data, mode]);
 
@@ -311,6 +315,7 @@ export function CardFormPage({ mode }: Props) {
           audioPreferences,
           inputMode: activeInputMode,
           tagIds: [...selectedTagIds],
+          difficulty,
         }
       });
       if (response.suggestedTagNames) {
@@ -321,6 +326,7 @@ export function CardFormPage({ mode }: Props) {
         setSuggestedTagNames(newSuggestions);
         if (newSuggestions.length === 0) setMessage("No new tag suggestions.");
       }
+      if (response.suggestedDifficulty) setDifficulty(response.suggestedDifficulty);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -351,6 +357,7 @@ export function CardFormPage({ mode }: Props) {
           audioPreferences,
           inputMode: activeInputMode,
           tagIds: [...selectedTagIds],
+          difficulty,
         }
       });
       if (response.status === "saved") {
@@ -384,6 +391,7 @@ export function CardFormPage({ mode }: Props) {
           );
           setSuggestedTagNames(newSuggestions);
         }
+        if (response.suggestedDifficulty) setDifficulty(response.suggestedDifficulty);
       }
       setMessage(response.message ?? "Done");
     } catch (err) {
@@ -675,6 +683,20 @@ export function CardFormPage({ mode }: Props) {
           )}
         </>
       )}
+
+      {/* ------------------------------------------------------------------ */}
+      <section className="rounded-3xl border border-slate-200 bg-white p-6 shadow-sm dark:border-slate-800 dark:bg-slate-900/70">
+        <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Card difficulty</h2>
+        <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">CEFR level is assigned by AI when creating or processing a card. You can correct it here.</p>
+        <select
+          className="mt-4 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+          value={difficulty ?? ""}
+          onChange={(event) => setDifficulty((event.target.value || undefined) as Difficulty | undefined)}
+        >
+          <option value="">Not assigned</option>
+          {(["A1", "A2", "B1", "B2", "C1", "C2"] as Difficulty[]).map((level) => <option key={level} value={level}>{level}</option>)}
+        </select>
+      </section>
 
       {/* ------------------------------------------------------------------ */}
       {/* Tags section — only shown when tagMode is not 'off'                */}

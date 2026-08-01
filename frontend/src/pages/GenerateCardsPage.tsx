@@ -7,6 +7,7 @@ import { LoadingScreen } from "../components/LoadingScreen";
 import { CandidateCard } from "../components/CandidateCard";
 import type {
   DeckTag,
+  Difficulty,
   GenerationCandidate,
   GenerationPreviewResponse,
 } from "../types";
@@ -18,6 +19,7 @@ import type {
 interface PersistedPrefs {
   cardType: "word" | "sentence";
   selectedByCategory: Record<string, string[]>; // Set serialised as array
+  difficulties: Difficulty[];
   cardsPerCell: number;
   directions: string[];
 }
@@ -54,6 +56,9 @@ interface DeckResponse {
 
 const MAX_CARDS_PER_CELL = 10;
 const MAX_TOTAL = 50;
+const DIFFICULTY_COLORS: Record<Difficulty, string> = {
+  A1: "#86efac", A2: "#4ade80", B1: "#fde047", B2: "#fb923c", C1: "#f97316", C2: "#ef4444"
+};
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -97,16 +102,7 @@ export function GenerateCardsPage() {
   const deck = deckQuery.data?.deck;
   const allTags: DeckTag[] = tagsQuery.data?.tags ?? [];
 
-  // A category is exclusive if ANY of its tags has category_exclusive=true.
-  // This is robust to inconsistent per-tag data (e.g. pre-existing tags).
-  const exclusiveCatNames = [...new Set(
-    allTags
-      .filter((t) => t.category && t.category_exclusive === true)
-      .map((t) => t.category)
-  )];
-
-  // All tags whose category is exclusive (used for constraint UI)
-  const exclusiveCatSet = new Set(exclusiveCatNames);
+  const tagCategoryNames = [...new Set(allTags.filter((t) => t.category).map((t) => t.category))];
 
   // ---- Form state (seeded from localStorage) ----
   const prefs = deckId ? loadPrefs(deckId) : {};
@@ -117,6 +113,9 @@ export function GenerateCardsPage() {
     () => Object.fromEntries(
       Object.entries(prefs.selectedByCategory ?? {}).map(([cat, ids]) => [cat, new Set(ids)])
     )
+  );
+  const [difficulties, setDifficulties] = useState<Set<Difficulty>>(
+    () => new Set(prefs.difficulties ?? [])
   );
   const [cardsPerCell, setCardsPerCell] = useState(prefs.cardsPerCell ?? 2);
   const [directions, setDirections] = useState<string[]>(prefs.directions ?? ["forward", "backward"]);
@@ -129,10 +128,11 @@ export function GenerateCardsPage() {
       selectedByCategory: Object.fromEntries(
         Object.entries(selectedByCategory).map(([cat, ids]) => [cat, [...ids]])
       ),
+      difficulties: [...difficulties],
       cardsPerCell,
       directions,
     });
-  }, [deckId, cardType, selectedByCategory, cardsPerCell, directions]);
+  }, [deckId, cardType, selectedByCategory, difficulties, cardsPerCell, directions]);
 
   // ---- Generation state ----
   const [generating, setGenerating] = useState(false);
@@ -161,31 +161,33 @@ export function GenerateCardsPage() {
   // ---- Constraint selection ----
   const toggleTagInCategory = (category: string, tagId: string) => {
     setSelectedByCategory((prev) => {
-      const next = { ...prev };
-      const current = new Set(next[category] ?? []);
-      if (current.has(tagId)) current.delete(tagId);
-      else current.add(tagId);
-      next[category] = current;
+      const next: Record<string, Set<string>> = {};
+      for (const [cat, ids] of Object.entries(prev)) {
+        if (cat === category) next[cat] = new Set(ids);
+      }
+      const selected = next[category] ?? new Set<string>();
+      if (selected.has(tagId)) selected.delete(tagId);
+      else selected.add(tagId);
+      next[category] = selected;
       return next;
     });
   };
 
   const selectAllInCategory = (category: string) => {
     const ids = allTags.filter((t) => t.category === category).map((t) => t.id);
-    setSelectedByCategory((prev) => ({ ...prev, [category]: new Set(ids) }));
+    setSelectedByCategory({ [category]: new Set(ids) });
   };
 
   const clearCategory = (category: string) => {
-    setSelectedByCategory((prev) => ({ ...prev, [category]: new Set() }));
+    setSelectedByCategory({ [category]: new Set() });
   };
 
   // ---- Total card count ----
   const constrainedCats = Object.entries(selectedByCategory).filter(
     ([, ids]) => ids.size > 0
   );
-  const cellCount = constrainedCats.length === 0
-    ? 1
-    : constrainedCats.reduce((acc, [, ids]) => acc * ids.size, 1);
+  const tagBundleCount = constrainedCats.length === 0 ? 1 : constrainedCats[0][1].size;
+  const cellCount = Math.max(1, difficulties.size) * tagBundleCount;
   const totalCards = cellCount * cardsPerCell;
   const overLimit = totalCards > MAX_TOTAL;
 
@@ -213,6 +215,7 @@ export function GenerateCardsPage() {
           cardType,
           description: description.trim() || null,
           exclusiveConstraints,
+          difficulties: [...difficulties],
           cardsPerCell,
           directions,
         },
@@ -254,6 +257,7 @@ export function GenerateCardsPage() {
           cards: toSave.map((c) => ({
             payload: c.payload,
             tagIds: c.tagIds,
+            difficulty: c.difficulty,
           })),
         },
       });
@@ -342,10 +346,26 @@ export function GenerateCardsPage() {
             />
           </div>
 
-          {/* Exclusive category selectors */}
-          {exclusiveCatNames.length > 0 && (
+          {/* Difficulty selectors */}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-2">Card difficulty</p>
+            <p className="mb-2 text-xs text-slate-400 dark:text-slate-500">Select levels to generate per level. Leave empty to let AI choose.</p>
+            <div className="flex flex-wrap gap-2">
+              {(["A1", "A2", "B1", "B2", "C1", "C2"] as Difficulty[]).map((level) => {
+                const selected = difficulties.has(level);
+                return <button key={level} type="button" onClick={() => setDifficulties((prev) => {
+                  const next = new Set(prev);
+                  if (next.has(level)) next.delete(level); else next.add(level);
+                  return next;
+                })} className="rounded-full border-2 px-3 py-1.5 text-sm font-medium" style={selected ? { borderColor: DIFFICULTY_COLORS[level], backgroundColor: `${DIFFICULTY_COLORS[level]}33`, color: DIFFICULTY_COLORS[level] } : { borderColor: `${DIFFICULTY_COLORS[level]}55`, color: `${DIFFICULTY_COLORS[level]}99` }}>{level}</button>;
+              })}
+            </div>
+          </div>
+
+          {/* One topic/custom tag bundle selector */}
+          {tagCategoryNames.length > 0 && (
             <div className="space-y-4">
-              {exclusiveCatNames.map((cat) => {
+              {tagCategoryNames.map((cat) => {
                 const tagsInCat = allTags.filter((t) => t.category === cat);
                 const selected = selectedByCategory[cat] ?? new Set<string>();
                 const allSelected = tagsInCat.every((t) => selected.has(t.id));
@@ -353,7 +373,7 @@ export function GenerateCardsPage() {
                   <div key={cat}>
                     <div className="flex items-center gap-3 mb-2">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
-                        {cat}
+                        {cat} <span className="normal-case font-normal text-slate-400">(choose one category)</span>
                       </p>
                       <button
                         type="button"
@@ -393,7 +413,7 @@ export function GenerateCardsPage() {
           <div className="flex flex-wrap items-end gap-5">
             <div>
               <label className="block text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400 mb-1.5">
-                Cards per level
+                  Cards per combination
               </label>
               <input
                 type="number"

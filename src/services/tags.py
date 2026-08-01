@@ -16,18 +16,6 @@ def _uuid(value) -> str:
 
 DEFAULT_TAG_PRESETS = [
     {
-        "category": "CEFR",
-        "exclusive": True,
-        "tags": [
-            {"name": "A1", "color": "#86efac"},
-            {"name": "A2", "color": "#4ade80"},
-            {"name": "B1", "color": "#fde047"},
-            {"name": "B2", "color": "#fb923c"},
-            {"name": "C1", "color": "#f97316"},
-            {"name": "C2", "color": "#ef4444"},
-        ],
-    },
-    {
         "category": "Topic",
         "exclusive": False,
         "tags": [
@@ -76,6 +64,9 @@ def create_tag(
     safe_name = name.strip().replace(" ", "_")
     if not safe_name:
         raise ValueError("Tag name cannot be empty.")
+
+    if category.strip().casefold() == "cefr":
+        raise ValueError("CEFR is card difficulty, not a tag category.")
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
@@ -134,11 +125,13 @@ def update_tag(
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
-                "SELECT id FROM deck_tags WHERE id = %s AND deck_id = %s",
+                "SELECT 1 FROM deck_tags WHERE id = %s AND deck_id = %s",
                 (_uuid(tag_id), _uuid(deck_id)),
             )
-            if not cur.fetchone():
+            existing = cur.fetchone()
+            if not existing:
                 return None
+
             updates = []
             params = []
             if name is not None:

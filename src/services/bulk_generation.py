@@ -42,6 +42,7 @@ def generate_cell(
     native_language: str,
     description: Optional[str],  # user's free-text topic
     constraint_tags: List[Dict],  # [{name, category}] — exclusive constraints
+    difficulty: Optional[str],
     count: int,
     field_schema: Optional[List[Dict]] = None,  # deck field schema
     model: Optional[str] = None,
@@ -58,10 +59,9 @@ def generate_cell(
     want_example = _field_enabled(schema, "example_sentence")
 
     # Build constraint description
-    constraint_parts = [
-        f"{tag['category']} level {tag['name']}" for tag in constraint_tags
-    ]
-    constraint_str = ", ".join(constraint_parts) if constraint_parts else "any level"
+    constraint_parts = [f"{tag['category']}: {tag['name']}" for tag in constraint_tags]
+    constraint_str = ", ".join(constraint_parts) if constraint_parts else "any topic"
+    difficulty_str = f"CEFR {difficulty}" if difficulty else "an appropriate CEFR level"
 
     if card_type == "sentence":
         item_desc = (
@@ -96,7 +96,7 @@ def generate_cell(
     topic_line = f'Topic/context: "{description}"' if description else ""
 
     user_prompt = (
-        f"Generate exactly {count} {item_desc} appropriate for {constraint_str} learners.\n"
+        f"Generate exactly {count} {item_desc} appropriate for {difficulty_str} learners and {constraint_str}.\n"
         + (topic_line + "\n" if topic_line else "")
         + f"For each item return: {field_hint}.\n"
         "Return ONLY a valid JSON array. No explanation, no markdown.\n"
@@ -365,6 +365,49 @@ def batch_infer_tags(
         ]
         c["suggested_tag_names"] = list(dict.fromkeys(locked + inferred))
 
+    return candidates
+
+
+def batch_infer_difficulties(
+    client: OpenAI,
+    candidates: List[Dict],
+    target_language: str,
+    model: Optional[str] = None,
+) -> List[Dict]:
+    """Assign CEFR difficulty separately from topic tags in one model call."""
+    if not candidates:
+        return candidates
+    words = "\n".join(f"- {c['foreign_phrase']}" for c in candidates)
+    try:
+        response = client.chat.completions.create(
+            model=model or OPENAI_MODEL,
+            temperature=0,
+            max_completion_tokens=1000,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Assign CEFR difficulty to language-learning cards. Return valid JSON only.",
+                },
+                {
+                    "role": "user",
+                    "content": (
+                        f"Language: {target_language}\n\nWords/phrases:\n{words}\n\n"
+                        'Return only a JSON object mapping each exact phrase to one of "A1", "A2", "B1", "B2", "C1", or "C2".'
+                    ),
+                },
+            ],
+        )
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = re.sub(r"^```[a-z]*\n?", "", raw).rstrip("`").strip()
+        levels = json.loads(raw)
+    except Exception:
+        levels = {}
+
+    valid = {"A1", "A2", "B1", "B2", "C1", "C2"}
+    for candidate in candidates:
+        level = levels.get(candidate["foreign_phrase"])
+        candidate["difficulty"] = level if level in valid else None
     return candidates
 
 

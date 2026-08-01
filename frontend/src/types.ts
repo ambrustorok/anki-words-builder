@@ -71,7 +71,10 @@ export interface CardGroup {
   created_at?: string;
   updated_at?: string;
   tags?: DeckTag[];
+  difficulty?: Difficulty;
 }
+
+export type Difficulty = "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 
 // ---------------------------------------------------------------------------
 // Bulk generation
@@ -86,6 +89,7 @@ export interface GenerationCandidate {
   dictionary_entry?: string;
   suggested_tag_names: string[];
   suggested_tag_ids: string[];
+  difficulty?: Difficulty;
   is_duplicate: boolean;
   is_possible_duplicate: boolean;
 

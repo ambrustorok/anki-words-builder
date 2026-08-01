@@ -114,15 +114,28 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     t.strip().replace(" ", "_") for t in raw_tags if t and t.strip()
                 )
             )
+            front = (
+                card["anki_front_override"]
+                if card.get("anki_front_override") is not None
+                else f"{card['front']}{front_audio_tag}"
+            )
+            back = (
+                card["anki_back_override"]
+                if card.get("anki_back_override") is not None
+                else f"{card['back']}{back_audio_tag}"
+            )
+            card["_anki_front_exported"] = front
+            card["_anki_back_exported"] = back
             note = TimestampedNote(
                 model=model,
                 fields=[
-                    f"{card['front']}{front_audio_tag}",
-                    f"{card['back']}{back_audio_tag}",
+                    front,
+                    back,
                 ],
                 guid=note_guid,
                 tags=safe_tags,
                 updated_at=card.get("updated_at"),
+                due=int(card.get("anki_due") or 0),
             )
             anki_deck.add_note(note)
 

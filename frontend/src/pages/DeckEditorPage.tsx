@@ -659,7 +659,7 @@ export function DeckEditorPage({ mode }: Props) {
                   Category
                   <input
                     className="mt-1 block w-28 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm dark:border-slate-700 dark:bg-slate-900"
-                    placeholder="e.g. CEFR"
+                    placeholder="e.g. Topic"
                     value={newTagCategory}
                     onChange={(e) => setNewTagCategory(e.target.value)}
                   />

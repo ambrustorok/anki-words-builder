@@ -292,10 +292,9 @@ def infer_tags(
         + (f"\nTranslation: {native_phrase}" if native_phrase else "")
         + f"\n\nAvailable tags:\n{tag_list_text}\n\n"
         "Which of these tags apply to this word/phrase? "
-        "For CEFR level tags (A1, A2, B1, B2, C1, C2), assign at most one. "
-        "For topic tags, assign any that clearly fit. "
+        "Assign only topic or custom tags that clearly fit. "
         "Only include tags from the list above. "
-        'Respond with a JSON array of tag name strings, e.g. ["C1", "politics"]. '
+        'Respond with a JSON array of tag name strings, e.g. ["politics"]. '
         "If none apply, return []."
     )
 
@@ -322,6 +321,32 @@ def infer_tags(
         ]
     except Exception:
         return []
+
+
+def infer_difficulty(client: OpenAI, payload: Dict[str, str], target_language: str) -> Optional[str]:
+    """Return the CEFR difficulty for a card, separately from topic tags."""
+    phrase = payload.get("foreign_phrase", "").strip()
+    if not phrase:
+        return None
+    try:
+        response = client.chat.completions.create(
+            model=OPENAI_MODEL,
+            temperature=0,
+            messages=[
+                {
+                    "role": "system",
+                    "content": "You assign CEFR difficulty to language-learning flashcards. Reply with exactly one level: A1, A2, B1, B2, C1, or C2.",
+                },
+                {
+                    "role": "user",
+                    "content": f"Language: {target_language}\nWord/phrase: {phrase}\nTranslation: {payload.get('native_phrase', '').strip()}",
+                },
+            ],
+        )
+        level = response.choices[0].message.content.strip().upper()
+        return level if level in {"A1", "A2", "B1", "B2", "C1", "C2"} else None
+    except Exception:
+        return None
 
 
 def generate_audio_for_phrase(

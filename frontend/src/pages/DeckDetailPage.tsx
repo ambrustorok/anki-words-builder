@@ -1,7 +1,8 @@
+import { useRef } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
-import { apiFetch, API_BASE_URL } from "../lib/api";
+import { apiFetch, API_BASE_URL, downloadApiFile } from "../lib/api";
 import { LoadingScreen } from "../components/LoadingScreen";
 import { CardGroupItem } from "../components/CardGroupItem";
 import type { DeckDetailResponse } from "../types";
@@ -9,6 +10,7 @@ import type { DeckDetailResponse } from "../types";
 export function DeckDetailPage() {
   const { deckId } = useParams();
   const navigate = useNavigate();
+  const ankiImportRef = useRef<HTMLInputElement>(null);
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["deck", deckId],
     queryFn: () => apiFetch<DeckDetailResponse>(`/decks/${deckId}`),
@@ -24,6 +26,24 @@ export function DeckDetailPage() {
 
   const navigateToCards = () => {
     navigate(`/decks/${deckId}/cards`);
+  };
+
+  const importFromAnki = async (file?: File) => {
+    if (!file || !deckId) return;
+    const form = new FormData();
+    form.append("file", file);
+    const response = await fetch(`${API_BASE_URL}/decks/${deckId}/import-anki`, {
+      method: "POST",
+      credentials: "include",
+      body: form,
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      window.alert(result.detail || "Could not import the Anki file.");
+      return;
+    }
+    window.alert(`Imported Anki changes: ${result.changed} edited card${result.changed === 1 ? "" : "s"}; ${result.matched} card${result.matched === 1 ? "" : "s"} matched.`);
+    refetch();
   };
 
   if (isLoading || !deckId) {
@@ -54,18 +74,49 @@ export function DeckDetailPage() {
             <Link className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center" to={`/decks/${deck.id}/edit`}>
               Edit
             </Link>
-            <a
-              className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
-              href={`${API_BASE_URL}/decks/${deck.id}/export`}
-            >
-              Export
-            </a>
+             <a
+               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+               href={`${API_BASE_URL}/decks/${deck.id}/export?mode=incremental`}
+               onClick={(event) => {
+                 event.preventDefault();
+                 void downloadApiFile(`/decks/${deck.id}/export?mode=incremental`);
+               }}
+             >
+               Export new
+             </a>
+             <a
+               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+               href={`${API_BASE_URL}/decks/${deck.id}/export?mode=full`}
+               onClick={(event) => {
+                 event.preventDefault();
+                 void downloadApiFile(`/decks/${deck.id}/export?mode=full`);
+               }}
+             >
+               Export full
+             </a>
             <a
               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
               href={`${API_BASE_URL}/decks/${deck.id}/backup`}
             >
               Backup
-            </a>
+             </a>
+             <input
+               ref={ankiImportRef}
+               type="file"
+               accept=".apkg,application/zip"
+               className="hidden"
+               onChange={(event) => {
+                 void importFromAnki(event.target.files?.[0]);
+                 event.currentTarget.value = "";
+               }}
+             />
+             <button
+               type="button"
+               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+               onClick={() => ankiImportRef.current?.click()}
+             >
+               Import from Anki
+             </button>
           </div>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 text-sm text-slate-600 md:grid-cols-3">

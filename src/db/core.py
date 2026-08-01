@@ -99,6 +99,10 @@ def init_db():
                 )
                 """
             )
+            # Export bookkeeping used for incremental Anki exports.
+            cur.execute(
+                "ALTER TABLE decks ADD COLUMN IF NOT EXISTS last_exported_at TIMESTAMPTZ"
+            )
             cur.execute("ALTER TABLE decks ADD COLUMN IF NOT EXISTS anki_id UUID")
             cur.execute(
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_decks_anki_id ON decks (anki_id)"
@@ -124,6 +128,15 @@ def init_db():
                 )
                 """
             )
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_due INTEGER")
+            cur.execute(
+                "ALTER TABLE cards ADD COLUMN IF NOT EXISTS difficulty TEXT CHECK (difficulty IN ('A1', 'A2', 'B1', 'B2', 'C1', 'C2'))"
+            )
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_front_override TEXT")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_back_override TEXT")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_front_exported TEXT")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_back_exported TEXT")
+            cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_scheduling JSONB")
             cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS entry_anki_id UUID")
             cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS anki_id UUID")
             cur.execute("ALTER TABLE cards ADD COLUMN IF NOT EXISTS front_audio BYTEA")
@@ -230,6 +243,29 @@ def init_db():
                 "ALTER TABLE deck_tags ADD COLUMN IF NOT EXISTS category_exclusive BOOLEAN NOT NULL DEFAULT FALSE"
             )
 
+            # CEFR used to be stored as ordinary tags. Move the lowest assigned
+            # CEFR level to the dedicated card difficulty before removing those tags.
+            cur.execute(
+                """
+                WITH levels AS (
+                    SELECT ct.card_group_id,
+                           (ARRAY_AGG(dt.name ORDER BY dt.sort_order, dt.name))[1] AS difficulty
+                    FROM card_tags ct
+                    JOIN deck_tags dt ON dt.id = ct.tag_id
+                    WHERE LOWER(dt.category) = 'cefr'
+                    GROUP BY ct.card_group_id
+                )
+                UPDATE cards c
+                SET difficulty = levels.difficulty
+                FROM levels
+                WHERE c.card_group_id = levels.card_group_id AND c.difficulty IS NULL
+                """
+            )
+            cur.execute(
+                "DELETE FROM card_tags ct USING deck_tags dt WHERE dt.id = ct.tag_id AND LOWER(dt.category) = 'cefr'"
+            )
+            cur.execute("DELETE FROM deck_tags WHERE LOWER(category) = 'cefr'")
+
             # App-level settings
             cur.execute(
                 """
@@ -241,6 +277,14 @@ def init_db():
                 """
             )
 
+            conn.commit()
+
+        # If this is an upgrade from an older schema, initialize incremental export
+        # checkpoints so we don't suddenly export/rewrite all existing cards.
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE decks SET last_exported_at = NOW() WHERE last_exported_at IS NULL"
+            )
             conn.commit()
 
         with conn.cursor(cursor_factory=RealDictCursor) as cur:

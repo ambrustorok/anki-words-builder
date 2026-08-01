@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { GenerationCandidate, DeckTag } from "../types";
+import { Difficulty, GenerationCandidate, DeckTag } from "../types";
 import { SafeHtml } from "./SafeHtml";
 
 interface CandidateCardProps {
@@ -7,6 +7,10 @@ interface CandidateCardProps {
   deckTags: DeckTag[];
   onChange: (id: string, updates: Partial<GenerationCandidate>) => void;
 }
+
+const difficultyColors: Record<Difficulty, string> = {
+  A1: "#86efac", A2: "#4ade80", B1: "#fde047", B2: "#fb923c", C1: "#f97316", C2: "#ef4444"
+};
 
 export function CandidateCard({ candidate, deckTags, onChange }: CandidateCardProps) {
   const [expanded, setExpanded] = useState(false);
@@ -114,8 +118,13 @@ export function CandidateCard({ candidate, deckTags, onChange }: CandidateCardPr
           )}
 
           {/* Tag chips */}
-          {assignedTags.length > 0 && (
+          {(candidate.difficulty || assignedTags.length > 0) && (
             <div className="mt-2 flex flex-wrap gap-1">
+              {candidate.difficulty && (
+                <span className="rounded-full border px-2 py-0.5 text-xs font-medium" style={{ borderColor: difficultyColors[candidate.difficulty], color: difficultyColors[candidate.difficulty], backgroundColor: `${difficultyColors[candidate.difficulty]}1a` }}>
+                  {candidate.difficulty}
+                </span>
+              )}
               {assignedTags.map((tag) => (
                 <span
                   key={tag.id}
@@ -173,6 +182,21 @@ export function CandidateCard({ candidate, deckTags, onChange }: CandidateCardPr
               />
             </div>
           )}
+
+          {/* Tag selector */}
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500 mb-1.5">
+              Card difficulty
+            </label>
+            <select
+              className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+              value={candidate.difficulty ?? ""}
+              onChange={(event) => onChange(candidate.ephemeral_id, { difficulty: (event.target.value || undefined) as Difficulty | undefined })}
+            >
+              <option value="">Not assigned</option>
+              {(["A1", "A2", "B1", "B2", "C1", "C2"] as Difficulty[]).map((level) => <option key={level} value={level}>{level}</option>)}
+            </select>
+          </div>
 
           {/* Tag selector */}
           {deckTags.length > 0 && (

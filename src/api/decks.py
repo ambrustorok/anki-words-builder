@@ -1,4 +1,5 @@
 import io
+from datetime import datetime
 from typing import List, Optional
 
 from fastapi import APIRouter, Depends, HTTPException, File, Form, Query, UploadFile
@@ -280,16 +281,28 @@ def delete_deck(deck_id: str, user=Depends(get_current_user)):
 
 
 @router.get("/{deck_id}/export")
-def export_deck(deck_id: str, user=Depends(get_current_user)):
+def export_deck(
+    deck_id: str,
+    mode: str = Query("incremental", description="incremental|full"),
+    user=Depends(get_current_user),
+):
+    mode = (mode or "").strip().lower()
+    if mode not in {"incremental", "full"}:
+        raise HTTPException(status_code=400, detail="mode must be 'incremental' or 'full'.")
     deck_uuid = parse_uuid(deck_id, entity="Deck")
     deck = deck_service.get_deck(deck_uuid, user["id"])
     if not deck:
         raise HTTPException(status_code=404, detail="Deck not found.")
 
+    since: Optional[datetime] = None
+    if mode == "incremental":
+        since = deck.get("last_exported_at")
+
     cards = card_service.get_cards_for_export(
         user["id"],
         deck,
         user.get("native_language"),
+        since=since,
     )
     if not cards:
         raise HTTPException(status_code=400, detail="No cards to export yet.")
@@ -297,23 +310,20 @@ def export_deck(deck_id: str, user=Depends(get_current_user)):
     # Attach tag names to each card for export — one lookup per group
     group_ids = list({str(c["card_group_id"]) for c in cards})
     tags_by_group = tag_service.get_tags_for_card_groups(group_ids)
-    tagged_count = 0
     for card in cards:
         gid = str(card["card_group_id"])
         card["tag_names"] = [t["name"] for t in tags_by_group.get(gid, [])]
-        if card["tag_names"]:
-            tagged_count += 1
-    import logging
 
-    logging.getLogger(__name__).info(
-        "Export: %d cards, %d groups, %d with tags, tag_map keys sample: %s",
-        len(cards),
-        len(group_ids),
-        tagged_count,
-        list(tags_by_group.keys())[:3],
+    card_service.assign_anki_due_for_export(
+        owner_id=user["id"],
+        deck_id=deck_uuid,
+        cards=cards,
     )
 
     binary = export_service.export_deck(deck, cards)
+    card_service.record_anki_export_faces(user["id"], cards)
+
+    deck_service.set_deck_last_exported_at(deck_uuid, user["id"])
     filename_slug = _safe_filename(deck["name"])
     return StreamingResponse(
         io.BytesIO(binary),
@@ -340,6 +350,28 @@ def backup_deck(deck_id: str, user=Depends(get_current_user)):
             "Content-Disposition": f"attachment; filename*=UTF-8''{filename_slug}.awdeck"
         },
     )
+
+
+@router.post("/{deck_id}/import-anki")
+async def import_anki_deck(
+    deck_id: str,
+    file: UploadFile = File(...),
+    user=Depends(get_current_user),
+):
+    deck_uuid = parse_uuid(deck_id, entity="Deck")
+    deck = deck_service.get_deck(deck_uuid, user["id"])
+    if not deck:
+        raise HTTPException(status_code=404, detail="Deck not found.")
+    contents = await file.read(MAX_BACKUP_BYTES + 1)
+    if len(contents) > MAX_BACKUP_BYTES:
+        raise HTTPException(status_code=413, detail="Anki file is too large (limit: 50 MB).")
+    cards = card_service.get_cards_for_export(
+        user["id"], deck, user.get("native_language")
+    )
+    try:
+        return card_service.import_anki_package(user["id"], cards, contents)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 @router.post("/import")

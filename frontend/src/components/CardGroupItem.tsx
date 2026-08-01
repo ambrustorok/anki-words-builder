@@ -48,6 +48,11 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                             Backward
                         </span>
                     )}
+                    {group.difficulty && (
+                        <span className="rounded-full border border-brand px-2 py-0.5 text-xs font-medium text-brand">
+                            {group.difficulty}
+                        </span>
+                    )}
                     {tags.map((tag) => (
                         <TagChip key={tag.id} tag={tag} />
                     ))}

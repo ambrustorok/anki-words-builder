@@ -280,8 +280,8 @@ def create_deck(
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
             cur.execute(
                 """
-                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO decks (id, owner_id, name, target_language, field_schema, prompt_templates, anki_id, last_exported_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, NOW())
                 RETURNING id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at, anki_id
                 """,
                 (
@@ -296,6 +296,7 @@ def create_deck(
             )
             deck = cur.fetchone()
         conn.commit()
+
     return deck
 
 
@@ -425,6 +426,7 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
                        d.field_schema,
                        d.prompt_templates,
                        d.tag_mode,
+                       d.last_exported_at,
 
                        d.created_at,
                        d.updated_at
@@ -438,6 +440,16 @@ def get_deck(deck_id: uuid.UUID, owner_id: uuid.UUID) -> Optional[dict]:
         return None
     deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
     return deck
+
+
+def set_deck_last_exported_at(deck_id: uuid.UUID, owner_id: uuid.UUID) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "UPDATE decks SET last_exported_at = NOW() WHERE id = %s AND owner_id = %s",
+                (_uuid(deck_id), _uuid(owner_id)),
+            )
+        conn.commit()
 
 
 def get_deck_by_anki_id(owner_id: uuid.UUID, anki_id: uuid.UUID) -> Optional[dict]:
@@ -493,7 +505,8 @@ def apply_backup_metadata(
                     target_language = %s,
                     field_schema = %s,
                     prompt_templates = %s,
-                    updated_at = NOW()
+                    updated_at = NOW(),
+                    last_exported_at = NOW()
                 WHERE id = %s AND owner_id = %s
                 RETURNING id, anki_id, name, target_language, field_schema, prompt_templates, tag_mode, created_at, updated_at
                 """,
@@ -510,6 +523,7 @@ def apply_backup_metadata(
         conn.commit()
     if deck:
         deck["field_schema"] = normalize_field_schema(deck.get("field_schema"))
+
     return deck
 
 
@@ -654,4 +668,3 @@ def set_deck_tag_mode(deck_id: uuid.UUID, owner_id: uuid.UUID, mode: str) -> Non
                 (mode, _uuid(deck_id), _uuid(owner_id)),
             )
         conn.commit()
-

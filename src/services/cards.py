@@ -1,4 +1,9 @@
+import io
+import sqlite3
+import tempfile
 import uuid
+import zipfile
+from datetime import datetime
 from typing import Dict, Iterable, List, Optional, Tuple
 
 from jinja2 import Template
@@ -40,6 +45,8 @@ LEGACY_PROMPT_TEMPLATES = {
         },
     ],
 }
+
+DIFFICULTY_LEVELS = ("A1", "A2", "B1", "B2", "C1", "C2")
 
 
 CARD_GUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "anki-words-builder/card")
@@ -124,11 +131,14 @@ def create_cards(
     directions: Iterable[str],
     native_language: Optional[str],
     audio_bytes: Optional[bytes] = None,
+    difficulty: Optional[str] = None,
 ) -> uuid.UUID:
     _validate_payload(payload, deck.get("field_schema", []))
     valid_directions = [d for d in directions if d in ("forward", "backward")]
     if not valid_directions:
         raise ValueError("Select at least one direction to generate cards.")
+    if difficulty is not None and difficulty not in DIFFICULTY_LEVELS:
+        raise ValueError("Unsupported card difficulty.")
 
     group_id = uuid.uuid4()
     entry_anki_id = generate_entry_anki_id()
@@ -144,9 +154,9 @@ def create_cards(
                     """
                     INSERT INTO cards (
                         id, card_group_id, entry_anki_id, deck_id, owner_id, direction,
-                        payload, front_audio, back_audio, audio_filename, anki_id
+                        payload, front_audio, back_audio, audio_filename, anki_id, difficulty
                     )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         _uuid(card_id),
@@ -160,6 +170,7 @@ def create_cards(
                         Binary(back_audio) if back_audio else None,
                         audio_filename,
                         _uuid(card_anki_id),
+                        difficulty,
                     ),
                 )
         conn.commit()
@@ -200,6 +211,9 @@ def list_recent_cards(
                        c.deck_id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
+                       c.anki_front_override,
+                       c.anki_back_override,
                        c.created_at,
                        c.updated_at,
                        c.front_audio IS NOT NULL AS has_front_audio,
@@ -228,6 +242,7 @@ def list_recent_cards(
                 "deck_name": row["deck_name"],
                 "target_language": row["target_language"],
                 "payload": row["payload"],
+                "difficulty": row.get("difficulty"),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "directions": [],
@@ -250,6 +265,8 @@ def list_recent_cards(
         faces = _render_card(
             deck_info, row["payload"], row["direction"], native_language
         )
+        faces["front"] = row.get("anki_front_override") or faces["front"]
+        faces["back"] = row.get("anki_back_override") or faces["back"]
 
         group["directions"].append(
             {
@@ -289,6 +306,9 @@ def list_cards_for_deck(
                        c.id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
+                       c.anki_front_override,
+                       c.anki_back_override,
                        c.created_at,
                        c.updated_at,
                        c.front_audio IS NOT NULL AS has_front_audio,
@@ -309,6 +329,7 @@ def list_cards_for_deck(
             {
                 "group_id": group_id,
                 "payload": row["payload"],
+                "difficulty": row.get("difficulty"),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "directions": [],
@@ -319,6 +340,8 @@ def list_cards_for_deck(
         group["created_at"] = min(group["created_at"], row["created_at"])
         group["updated_at"] = max(group["updated_at"], row["updated_at"])
         faces = _render_card(deck, row["payload"], row["direction"], native_language)
+        faces["front"] = row.get("anki_front_override") or faces["front"]
+        faces["back"] = row.get("anki_back_override") or faces["back"]
         group["directions"].append(
             {
                 "id": row["id"],
@@ -418,6 +441,9 @@ def list_cards_for_deck_paginated(
                        c.id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
+                       c.anki_front_override,
+                       c.anki_back_override,
                        c.created_at,
                        c.updated_at,
                        c.front_audio IS NOT NULL AS has_front_audio,
@@ -441,6 +467,7 @@ def list_cards_for_deck_paginated(
             {
                 "group_id": group_id,
                 "payload": row["payload"],
+                "difficulty": row.get("difficulty"),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "directions": [],
@@ -451,6 +478,8 @@ def list_cards_for_deck_paginated(
         group["created_at"] = min(group["created_at"], row["created_at"])
         group["updated_at"] = max(group["updated_at"], row["updated_at"])
         faces = _render_card(deck, row["payload"], row["direction"], native_language)
+        faces["front"] = row.get("anki_front_override") or faces["front"]
+        faces["back"] = row.get("anki_back_override") or faces["back"]
         group["directions"].append(
             {
                 "id": row["id"],
@@ -489,27 +518,44 @@ def list_cards_for_deck_paginated(
 
 
 def get_cards_for_export(
-    owner_id: uuid.UUID, deck: dict, native_language: Optional[str]
+    owner_id: uuid.UUID,
+    deck: dict,
+    native_language: Optional[str],
+    *,
+    since: Optional[datetime] = None,
 ) -> List[dict]:
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            where_since = ""
+            params: List[object] = [_uuid(owner_id), _uuid(deck["id"])]
+            if since is not None:
+                where_since = " AND c.updated_at > %s "
+                params.append(since)
+
             cur.execute(
-                """
+                f"""
                 SELECT c.id,
                        c.card_group_id,
                        c.entry_anki_id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
                        c.created_at,
                        c.updated_at,
+                       c.anki_due,
+                       c.anki_front_override,
+                       c.anki_back_override,
+                       c.anki_front_exported,
+                       c.anki_back_exported,
                        c.front_audio,
                        c.back_audio,
                        c.audio_filename
                 FROM cards c
                 WHERE c.owner_id = %s AND c.deck_id = %s
+                {where_since}
                 ORDER BY c.created_at ASC
                 """,
-                (_uuid(owner_id), _uuid(deck["id"])),
+                tuple(params),
             )
             rows = cur.fetchall()
 
@@ -522,6 +568,12 @@ def get_cards_for_export(
                 "entry_anki_id": row.get("entry_anki_id"),
                 "front": faces["front"],
                 "back": faces["back"],
+                "anki_due": row.get("anki_due"),
+                "difficulty": row.get("difficulty"),
+                "anki_front_override": row.get("anki_front_override"),
+                "anki_back_override": row.get("anki_back_override"),
+                "anki_front_exported": row.get("anki_front_exported"),
+                "anki_back_exported": row.get("anki_back_exported"),
                 "front_audio": bytes(row["front_audio"])
                 if row["front_audio"]
                 else None,
@@ -531,6 +583,188 @@ def get_cards_for_export(
             }
         )
     return export_rows
+
+
+def record_anki_export_faces(owner_id: uuid.UUID, cards: List[dict]) -> None:
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for card in cards:
+                cur.execute(
+                    """
+                    UPDATE cards
+                    SET anki_front_exported = %s, anki_back_exported = %s
+                    WHERE id = %s AND owner_id = %s
+                    """,
+                    (
+                        card.get("_anki_front_exported"),
+                        card.get("_anki_back_exported"),
+                        _uuid(card["id"]),
+                        _uuid(owner_id),
+                    ),
+                )
+        conn.commit()
+
+
+def import_anki_package(owner_id: uuid.UUID, cards: List[dict], package: bytes) -> dict:
+    """Apply Anki note edits and scheduling state to known exported cards."""
+    by_guid = {
+        stable_card_guid(
+            uuid.UUID(str(card["entry_anki_id"])), card.get("direction") or "forward"
+        ): card
+        for card in cards
+        if card.get("entry_anki_id")
+    }
+    try:
+        with zipfile.ZipFile(io.BytesIO(package)) as archive:
+            collection_name = next(
+                name for name in archive.namelist() if name in {"collection.anki2", "collection.anki21"}
+            )
+            collection = archive.read(collection_name)
+    except (KeyError, StopIteration, zipfile.BadZipFile) as exc:
+        raise ValueError("Upload a valid Anki .apkg file.") from exc
+
+    with tempfile.NamedTemporaryFile() as database:
+        database.write(collection)
+        database.flush()
+        with sqlite3.connect(database.name) as conn:
+            rows = conn.execute(
+                """
+                SELECT n.guid, n.flds, n.mod,
+                       c.type, c.queue, c.due, c.ivl, c.factor, c.reps, c.lapses,
+                       c.left, c.odue, c.odid
+                FROM notes n JOIN cards c ON c.nid = n.id
+                """
+            ).fetchall()
+
+    matched = 0
+    changed = 0
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            for row in rows:
+                card = by_guid.get(row[0])
+                fields = row[1].split("\x1f")
+                if not card or len(fields) < 2:
+                    continue
+                matched += 1
+                front, back = fields[:2]
+                faces_changed = (
+                    card.get("anki_front_exported") is None
+                    or card.get("anki_back_exported") is None
+                    or front != card.get("anki_front_exported")
+                    or back != card.get("anki_back_exported")
+                )
+                scheduling = {
+                    "modified_at": row[2],
+                    "type": row[3],
+                    "queue": row[4],
+                    "due": row[5],
+                    "interval": row[6],
+                    "ease_factor": row[7],
+                    "repetitions": row[8],
+                    "lapses": row[9],
+                    "left": row[10],
+                    "original_due": row[11],
+                    "original_deck_id": row[12],
+                }
+                cur.execute(
+                    """
+                    UPDATE cards
+                    SET anki_front_override = CASE WHEN %s THEN %s ELSE anki_front_override END,
+                        anki_back_override = CASE WHEN %s THEN %s ELSE anki_back_override END,
+                        anki_scheduling = %s,
+                        updated_at = CASE WHEN %s THEN NOW() ELSE updated_at END
+                    WHERE id = %s AND owner_id = %s
+                    """,
+                    (
+                        faces_changed,
+                        front,
+                        faces_changed,
+                        back,
+                        Json(scheduling),
+                        faces_changed,
+                        _uuid(card["id"]),
+                        _uuid(owner_id),
+                    ),
+                )
+                changed += int(faces_changed)
+        conn.commit()
+    return {"matched": matched, "changed": changed}
+
+
+def assign_anki_due_for_export(
+    *,
+    owner_id: uuid.UUID,
+    deck_id: uuid.UUID,
+    cards: List[dict],
+) -> None:
+    """Assign stable Anki `due` positions for cards that haven't been exported before.
+
+    Dues are bucketed by the card's CEFR difficulty.
+    Bucket bases are: A1=0.., A2=10000.., ..., C2=50000.. (each bucket size=10000).
+    """
+
+    # Fast path: nothing to assign.
+    missing = [c for c in cards if c.get("anki_due") is None]
+    if not missing:
+        return
+
+    DUE_BUCKET_SIZE = 10_000
+
+    def _bucket_id(card: dict) -> int:
+        try:
+            return DIFFICULTY_LEVELS.index(card.get("difficulty"))
+        except ValueError:
+            return len(DIFFICULTY_LEVELS)  # unknown difficulty bucket after C2
+
+    bucket_existing_counts: dict[int, int] = {}
+    with get_connection() as conn:
+        with conn.cursor(cursor_factory=RealDictCursor) as cur:
+            cur.execute(
+                """
+                SELECT (anki_due / %s) AS bucket, COUNT(*)::int AS cnt
+                FROM cards
+                WHERE owner_id = %s AND deck_id = %s AND anki_due IS NOT NULL
+                GROUP BY bucket
+                """,
+                (DUE_BUCKET_SIZE, _uuid(owner_id), _uuid(deck_id)),
+            )
+            for row in cur.fetchall():
+                bucket_existing_counts[int(row["bucket"]) ] = int(row["cnt"])
+
+        # Assign and persist dues in a second step to keep a single connection lifecycle.
+        with conn.cursor() as cur:
+            to_update = []
+            # Group missing cards by bucket.
+            new_by_bucket: dict[int, List[dict]] = {}
+            for card in missing:
+                b = _bucket_id(card)
+                new_by_bucket.setdefault(b, []).append(card)
+
+            import hashlib
+
+            for bucket_id, new_cards in new_by_bucket.items():
+                # Randomize within the bucket, but deterministically so new cards don't reshuffle existing ones.
+                new_cards_sorted = sorted(
+                    new_cards,
+                    key=lambda c: int.from_bytes(
+                        hashlib.sha256(
+                            f"{c.get('id')}:{c.get('direction')}".encode("utf-8")
+                        ).digest()[:8],
+                        "big",
+                    ),
+                )
+                next_offset = bucket_existing_counts.get(bucket_id, 0)
+                for i, card in enumerate(new_cards_sorted):
+                    due = bucket_id * DUE_BUCKET_SIZE + (next_offset + i)
+                    to_update.append((due, _uuid(card["id"]), _uuid(owner_id)))
+                    card["anki_due"] = due
+
+            for due, card_id, o in to_update:
+                cur.execute(
+                    "UPDATE cards SET anki_due = %s WHERE id = %s AND owner_id = %s",
+                    (due, card_id, o),
+                )
+        conn.commit()
 
 
 def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
@@ -543,6 +777,7 @@ def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
                        c.entry_anki_id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
                        c.created_at,
                        c.updated_at,
                        c.front_audio,
@@ -564,6 +799,7 @@ def get_cards_for_backup(owner_id: uuid.UUID, deck_id: uuid.UUID) -> List[dict]:
                 "entry_anki_id": row.get("entry_anki_id"),
                 "direction": row["direction"],
                 "payload": row["payload"],
+                "difficulty": row.get("difficulty"),
                 "created_at": row["created_at"],
                 "updated_at": row["updated_at"],
                 "front_audio": bytes(row["front_audio"])
@@ -585,12 +821,16 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
                        c.id,
                        c.direction,
                        c.payload,
+                       c.difficulty,
                        c.created_at,
                        c.updated_at,
                        c.deck_id,
                        c.audio_filename,
                        c.front_audio,
                        c.back_audio,
+                       c.anki_front_override,
+                       c.anki_back_override,
+                       c.anki_scheduling,
                        d.name AS deck_name,
                        d.target_language,
                        d.field_schema,
@@ -634,8 +874,12 @@ def get_card_group(owner_id: uuid.UUID, group_id: uuid.UUID) -> Optional[dict]:
         "rows": rows,
         "deck": deck,
         "payload": payload,
+        "difficulty": rows[0].get("difficulty"),
         "audio": audio_bytes,
         "audio_filename": rows[0]["audio_filename"],
+        "anki_front_override": rows[0].get("anki_front_override"),
+        "anki_back_override": rows[0].get("anki_back_override"),
+        "anki_scheduling": rows[0].get("anki_scheduling"),
         "created_at": created_at,
         "updated_at": updated_at,
     }
@@ -648,10 +892,13 @@ def update_card_group(
     payload: dict,
     directions: List[str],
     audio_bytes: Optional[bytes],
+    difficulty: Optional[str] = None,
 ) -> bool:
     valid_directions = [d for d in directions if d in ("forward", "backward")]
     if not valid_directions:
         raise ValueError("Select at least one direction to keep.")
+    if difficulty is not None and difficulty not in DIFFICULTY_LEVELS:
+        raise ValueError("Unsupported card difficulty.")
 
     with get_connection() as conn:
         with conn.cursor(cursor_factory=RealDictCursor) as cur:
@@ -675,8 +922,8 @@ def update_card_group(
             for direction in valid_directions:
                 row = existing.get(direction)
                 if row:
-                    params = [Json(payload)]
-                    set_clauses = ["payload = %s"]
+                    params = [Json(payload), difficulty]
+                    set_clauses = ["payload = %s", "difficulty = %s"]
                     if audio_bytes is not None:
                         set_clauses.extend(
                             [
@@ -705,9 +952,9 @@ def update_card_group(
                         """
                         INSERT INTO cards (
                             id, card_group_id, entry_anki_id, deck_id, owner_id, direction,
-                            payload, front_audio, back_audio, audio_filename, anki_id
+                            payload, front_audio, back_audio, audio_filename, anki_id, difficulty
                         )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         """,
                         (
                             _uuid(card_id),
@@ -721,6 +968,7 @@ def update_card_group(
                             back_audio,
                             audio_name,
                             _uuid(card_anki_id),
+                            difficulty,
                         ),
                     )
 
@@ -833,6 +1081,7 @@ def _group_restore_payload(cards: List[dict]) -> List[dict]:
         normalized_card = {
             "direction": direction,
             "payload": card.get("payload") or {},
+            "difficulty": card.get("difficulty"),
             "created_at": card.get("created_at"),
             "updated_at": card.get("updated_at") or card.get("created_at"),
             "front_audio": card.get("front_audio"),
@@ -1017,9 +1266,10 @@ def _insert_entry_card(
             audio_filename,
             created_at,
             updated_at,
-            anki_id
+            anki_id,
+            difficulty
         )
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """,
         (
             _uuid(card_id),
@@ -1035,6 +1285,7 @@ def _insert_entry_card(
             created_at,
             updated_at,
             _uuid(card_anki_uuid),
+            card.get("difficulty"),
         ),
     )
     return str(card_id)
