@@ -1,5 +1,5 @@
 import { NavLink, Link, useLocation } from "react-router-dom";
-import { ReactNode, useEffect, useRef } from "react";
+import { ReactNode } from "react";
 import { useSession } from "../lib/session";
 import { getCloudflareLogoutUrl } from "../lib/logout";
 import { ThemeToggle } from "./ThemeToggle";
@@ -44,11 +44,7 @@ export function Layout({ children }: LayoutProps) {
   const logoutHref = getCloudflareLogoutUrl();
   const location = useLocation();
   const { exporting } = useDeckExport();
-  const layoutRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    layoutRef.current?.toggleAttribute("inert", exporting);
-  }, [exporting]);
+  const version = import.meta.env.VITE_APP_VERSION || "c13509f";
 
   type NavItem = { to: string; label: string; icon: ReactNode };
   const navItems: NavItem[] = [
@@ -63,7 +59,7 @@ export function Layout({ children }: LayoutProps) {
     to === "/" ? location.pathname === "/" : location.pathname.startsWith(to);
 
   return (
-    <div ref={layoutRef} className="min-h-screen bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100">
+    <fieldset disabled={exporting} className={`min-h-screen w-full border-0 bg-slate-50 p-0 text-slate-900 dark:bg-slate-950 dark:text-slate-100 ${exporting ? "pointer-events-none opacity-50" : ""}`}>
       {/* Desktop top bar */}
       <header className="hidden md:block border-b border-slate-200 bg-white dark:border-slate-800 dark:bg-slate-900/70">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-6 py-3">
@@ -138,6 +134,9 @@ export function Layout({ children }: LayoutProps) {
           })}
         </div>
       </nav>
-    </div>
+      <footer className="border-t border-slate-200 px-4 py-5 text-center text-xs text-slate-400 dark:border-slate-800 dark:text-slate-500 md:px-8">
+        Anki Words Builder · Build {version} · Keep adding words.
+      </footer>
+    </fieldset>
   );
 }

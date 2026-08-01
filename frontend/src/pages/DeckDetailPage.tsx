@@ -56,6 +56,7 @@ export function DeckDetailPage() {
   }
   const deck = data?.deck;
   if (!deck) return null;
+  const disabledClass = exporting ? "pointer-events-none opacity-50" : "";
 
   return (
     <div className="space-y-6">
@@ -67,20 +68,20 @@ export function DeckDetailPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">{deck.target_language}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className="rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center" to={`/cards/new/${deck.id}`}>
+            <Link className={`rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center ${disabledClass}`} to={`/cards/new/${deck.id}`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
               Add card
             </Link>
-            <Link className="rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand min-h-[44px] flex items-center dark:border-brand/30 dark:bg-brand/5" to={`/decks/${deck.id}/generate`}>
+            <Link className={`rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand min-h-[44px] flex items-center dark:border-brand/30 dark:bg-brand/5 ${disabledClass}`} to={`/decks/${deck.id}/generate`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
               Generate cards
             </Link>
-            <Link className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center" to={`/decks/${deck.id}/edit`}>
+            <Link className={`rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center ${disabledClass}`} to={`/decks/${deck.id}/edit`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
               Edit
             </Link>
               <button
                 type="button"
                 className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={exporting}
-                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=incremental`, "Your deck")}
+                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=incremental`, "Your deck", `${deck.name}.apkg`)}
               >
                 {exporting ? "Preparing..." : "Export new"}
               </button>
@@ -88,29 +89,33 @@ export function DeckDetailPage() {
                 type="button"
                 className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
                 disabled={exporting}
-                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=full`, "Your deck")}
+                onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=full`, "Your deck", `${deck.name}.apkg`)}
               >
                 {exporting ? "Preparing..." : "Export full"}
               </button>
             <a
-              className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+              className={`rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center ${disabledClass}`}
               href={`${API_BASE_URL}/decks/${deck.id}/backup`}
+              aria-disabled={exporting}
+              tabIndex={exporting ? -1 : undefined}
             >
               Backup
              </a>
              <input
                ref={ankiImportRef}
                type="file"
-               accept=".apkg,application/zip"
-               className="hidden"
+                accept=".apkg,application/zip"
+                className="hidden"
+                disabled={exporting}
                onChange={(event) => {
                  void importFromAnki(event.target.files?.[0]);
                  event.currentTarget.value = "";
                }}
              />
              <button
-               type="button"
-               className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+                type="button"
+                className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
+                disabled={exporting}
                onClick={() => ankiImportRef.current?.click()}
              >
                Import from Anki

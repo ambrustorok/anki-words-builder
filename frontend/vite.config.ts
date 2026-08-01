@@ -65,6 +65,9 @@ export default defineConfig(({ mode }) => {
         },
       }),
     ],
+    resolve: {
+      extensions: [".tsx", ".ts", ".jsx", ".js", ".mjs", ".json"],
+    },
     server: {
       host: true,
       port: devPort,

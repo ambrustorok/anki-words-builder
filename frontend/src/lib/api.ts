@@ -58,7 +58,7 @@ async function apiFetch<T>(path: string, options: FetchOptions = {}): Promise<T>
   return (data as T) ?? (undefined as T);
 }
 
-async function downloadApiFile(path: string) {
+async function downloadApiFile(path: string, fallbackFilename = "deck.apkg") {
   const response = await fetch(`${API_BASE_URL}${path}`, { credentials: "include" });
   if (!response.ok) {
     const data = await response.json().catch(() => undefined);
@@ -70,7 +70,7 @@ async function downloadApiFile(path: string) {
   const link = document.createElement("a");
   link.href = url;
   const filename = response.headers.get("Content-Disposition")?.match(/filename\*=UTF-8''([^;]+)/i)?.[1];
-  link.download = filename ? decodeURIComponent(filename) : "deck.apkg";
+  link.download = filename ? decodeURIComponent(filename) : fallbackFilename;
   link.click();
   URL.revokeObjectURL(url);
 }

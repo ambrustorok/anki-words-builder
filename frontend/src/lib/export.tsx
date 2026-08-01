@@ -2,7 +2,7 @@ import { createContext, ReactNode, useContext, useEffect, useRef, useState } fro
 
 import { downloadApiFile } from "./api";
 
-const ExportContext = createContext<{ exporting: boolean; exportDeck: (path: string, label: string) => Promise<void> } | null>(null);
+const ExportContext = createContext<{ exporting: boolean; exportDeck: (path: string, label: string, filename: string) => Promise<void> } | null>(null);
 
 export function ExportProvider({ children }: { children: ReactNode }) {
   const [label, setLabel] = useState<string | null>(null);
@@ -15,24 +15,30 @@ export function ExportProvider({ children }: { children: ReactNode }) {
       event.preventDefault();
       event.returnValue = "";
     };
+    const preventClick = (event: MouseEvent) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+    };
     const preventBack = () => window.history.go(1);
+    document.addEventListener("click", preventClick, true);
     window.addEventListener("beforeunload", preventUnload);
     window.addEventListener("popstate", preventBack);
     return () => {
+      document.removeEventListener("click", preventClick, true);
       window.removeEventListener("beforeunload", preventUnload);
       window.removeEventListener("popstate", preventBack);
       if (window.history.state?.deckExport) window.history.back();
     };
   }, [exporting]);
 
-  const exportDeck = async (path: string, nextLabel: string) => {
+  const exportDeck = async (path: string, nextLabel: string, filename: string) => {
     if (exportingRef.current) return;
     exportingRef.current = true;
     // Keep a same-URL history entry so the browser Back button stays on this page.
     window.history.pushState({ ...window.history.state, deckExport: true }, "", window.location.href);
     setLabel(nextLabel);
     try {
-      await downloadApiFile(path);
+      await downloadApiFile(path, filename);
     } finally {
       exportingRef.current = false;
       setLabel(null);

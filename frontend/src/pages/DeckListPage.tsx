@@ -176,6 +176,7 @@ export function DeckListPage() {
                 </div>
                 <DeckQuickActions
                   deckId={deck.id}
+                  deckName={deck.name}
                   variant="stacked"
                   className="relative z-10"
                 />

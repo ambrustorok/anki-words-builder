@@ -128,7 +128,7 @@ export function DashboardPage() {
                     </p>
                   </div>
                 </div>
-                <DeckQuickActions deckId={deck.id} variant="stacked" />
+                <DeckQuickActions deckId={deck.id} deckName={deck.name} variant="stacked" />
               </article>
             ))}
           </div>

@@ -184,3 +184,6 @@ data/
 media/
 extracted_audi
 frontend/node_modules/
+frontend/dev-dist/
+frontend/src/**/*.js
+frontend/tsconfig.tsbuildinfo

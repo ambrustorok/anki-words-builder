@@ -5,11 +5,12 @@ import { useDeckExport } from "../lib/export";
 
 interface Props {
   deckId: string;
+  deckName: string;
   className?: string;
   variant?: "inline" | "stacked";
 }
 
-export function DeckQuickActions({ deckId, className = "", variant = "inline" }: Props) {
+export function DeckQuickActions({ deckId, deckName, className = "", variant = "inline" }: Props) {
   const { exporting, exportDeck } = useDeckExport();
   const containerClasses = [
     "flex flex-wrap gap-1.5",
@@ -45,7 +46,7 @@ export function DeckQuickActions({ deckId, className = "", variant = "inline" }:
             disabled={exporting}
             onClick={(event) => {
               event.stopPropagation();
-              void exportDeck(action.download!, "Your deck");
+              void exportDeck(action.download!, "Your deck", `${deckName}.apkg`);
             }}
           >
             <action.icon />
