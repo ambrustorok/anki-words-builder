@@ -15,7 +15,7 @@ services:
       - .env
     volumes:
       - .:/app
-    command: uv run uvicorn src.app:app --host 0.0.0.0 --port 8100 --reload
+    command: uvicorn src.app:app --host 0.0.0.0 --port 8100 --reload --reload-dir src
     ports:
       - "8100:8100"
     depends_on:
@@ -32,7 +32,7 @@ services:
     volumes:
       - ./frontend:/app
       - node_modules:/app/node_modules
-    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port ${VITE_DEV_PORT:-5173}"
+    command: sh -c "test node_modules/.package-lock.json -nt package-lock.json || npm ci; exec npm run dev -- --host 0.0.0.0 --port ${VITE_DEV_PORT:-5173}"
     ports:
       - "${VITE_DEV_PORT:-5173}:${VITE_DEV_PORT:-5173}"
     depends_on:

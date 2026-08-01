@@ -4,14 +4,9 @@ FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies using apt
-RUN apt-get update && apt-get install -y \
-    libffi-dev \
-    libpq-dev \
-    build-essential \
+# Runtime dependency for audio conversion.
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    libsndfile1 \
-    libsndfile1-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
@@ -28,4 +23,4 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONPATH=/app
 
 # Command to run the application
-CMD ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8100"]
