@@ -5,6 +5,7 @@ import { SafeHtml } from "./SafeHtml";
 interface CardGroupItemProps {
     group: CardGroup;
     onDelete: (groupId: string) => void;
+    deckName?: string;
 }
 
 function TagChip({ tag }: { tag: DeckTag }) {
@@ -18,7 +19,7 @@ function TagChip({ tag }: { tag: DeckTag }) {
     );
 }
 
-export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
+export function CardGroupItem({ group, onDelete, deckName }: CardGroupItemProps) {
     const navigate = useNavigate();
     const tags = group.tags ?? [];
 
@@ -58,7 +59,7 @@ export function CardGroupItem({ group, onDelete }: CardGroupItemProps) {
                     ))}
                 </div>
                 <span className="text-slate-300 dark:text-slate-700">|</span>
-                <span>Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>
+                <span>{deckName ? `${deckName} · ` : ""}Updated {group.updated_at ? new Date(group.updated_at).toLocaleString() : "—"}</span>
                 <div className="ml-auto flex gap-2 text-xs">
                     <Link
                         className="rounded-lg border border-brand/30 px-3 py-1.5 text-brand"
