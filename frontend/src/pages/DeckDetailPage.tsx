@@ -1,4 +1,4 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useNavigate, useParams } from "react-router-dom";
 
@@ -12,6 +12,7 @@ export function DeckDetailPage() {
   const { deckId } = useParams();
   const navigate = useNavigate();
   const ankiImportRef = useRef<HTMLInputElement>(null);
+  const [importing, setImporting] = useState(false);
   const { exporting, exportDeck } = useDeckExport();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["deck", deckId],
@@ -32,20 +33,25 @@ export function DeckDetailPage() {
 
   const importFromAnki = async (file?: File) => {
     if (!file || !deckId) return;
-    const form = new FormData();
-    form.append("file", file);
-    const response = await fetch(`${API_BASE_URL}/decks/${deckId}/import-anki`, {
-      method: "POST",
-      credentials: "include",
-      body: form,
-    });
-    const result = await response.json().catch(() => ({}));
-    if (!response.ok) {
-      window.alert(result.detail || "Could not import the Anki file.");
-      return;
+    setImporting(true);
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      const response = await fetch(`${API_BASE_URL}/decks/${deckId}/import-anki`, {
+        method: "POST",
+        credentials: "include",
+        body: form,
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        window.alert(result.detail || "Could not import the Anki file.");
+        return;
+      }
+      window.alert(`Imported Anki changes: ${result.changed} edited card${result.changed === 1 ? "" : "s"}; ${result.matched} card${result.matched === 1 ? "" : "s"} matched.`);
+      refetch();
+    } finally {
+      setImporting(false);
     }
-    window.alert(`Imported Anki changes: ${result.changed} edited card${result.changed === 1 ? "" : "s"}; ${result.matched} card${result.matched === 1 ? "" : "s"} matched.`);
-    refetch();
   };
 
   if (isLoading || !deckId) {
@@ -56,7 +62,8 @@ export function DeckDetailPage() {
   }
   const deck = data?.deck;
   if (!deck) return null;
-  const disabledClass = exporting ? "pointer-events-none opacity-50" : "";
+  const busy = exporting || importing;
+  const disabledClass = busy ? "pointer-events-none opacity-50" : "";
 
   return (
     <div className="space-y-6">
@@ -68,19 +75,19 @@ export function DeckDetailPage() {
             <p className="text-sm text-slate-500 dark:text-slate-400">{deck.target_language}</p>
           </div>
           <div className="flex flex-wrap gap-2">
-            <Link className={`rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center ${disabledClass}`} to={`/cards/new/${deck.id}`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
+            <Link className={`rounded-full bg-brand px-4 py-2.5 text-sm font-semibold text-slate-900 min-h-[44px] flex items-center ${disabledClass}`} to={`/cards/new/${deck.id}`} aria-disabled={busy} tabIndex={busy ? -1 : undefined}>
               Add card
             </Link>
-            <Link className={`rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand min-h-[44px] flex items-center dark:border-brand/30 dark:bg-brand/5 ${disabledClass}`} to={`/decks/${deck.id}/generate`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
+            <Link className={`rounded-full border border-brand/40 bg-brand/10 px-4 py-2.5 text-sm font-semibold text-brand min-h-[44px] flex items-center dark:border-brand/30 dark:bg-brand/5 ${disabledClass}`} to={`/decks/${deck.id}/generate`} aria-disabled={busy} tabIndex={busy ? -1 : undefined}>
               Generate cards
             </Link>
-            <Link className={`rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center ${disabledClass}`} to={`/decks/${deck.id}/edit`} aria-disabled={exporting} tabIndex={exporting ? -1 : undefined}>
+            <Link className={`rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center ${disabledClass}`} to={`/decks/${deck.id}/edit`} aria-disabled={busy} tabIndex={busy ? -1 : undefined}>
               Edit
             </Link>
               <button
                 type="button"
                 className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={exporting}
+                disabled={busy}
                 onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=incremental`, "Your deck", `${deck.name}.apkg`)}
               >
                 {exporting ? "Preparing..." : "Export new"}
@@ -88,37 +95,37 @@ export function DeckDetailPage() {
               <button
                 type="button"
                 className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={exporting}
+                disabled={busy}
                 onClick={() => void exportDeck(`/decks/${deck.id}/export?mode=full`, "Your deck", `${deck.name}.apkg`)}
               >
                 {exporting ? "Preparing..." : "Export full"}
               </button>
-            <a
-              className={`rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center ${disabledClass}`}
-              href={`${API_BASE_URL}/decks/${deck.id}/backup`}
-              aria-disabled={exporting}
-              tabIndex={exporting ? -1 : undefined}
+            <button
+              type="button"
+              className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
+              disabled={busy}
+              onClick={() => void exportDeck(`/decks/${deck.id}/backup`, "Your backup", `${deck.name}.awdeck`)}
             >
-              Backup
-             </a>
+              {exporting ? "Preparing..." : "Backup"}
+              </button>
              <input
                ref={ankiImportRef}
                type="file"
                 accept=".apkg,application/zip"
                 className="hidden"
-                disabled={exporting}
+                 disabled={busy}
                onChange={(event) => {
                  void importFromAnki(event.target.files?.[0]);
                  event.currentTarget.value = "";
                }}
              />
-             <button
+              <button
                 type="button"
-                className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center"
-                disabled={exporting}
-               onClick={() => ankiImportRef.current?.click()}
-             >
-               Import from Anki
+                className="rounded-full border border-slate-300 px-4 py-2.5 text-sm dark:border-slate-600 dark:text-slate-200 min-h-[44px] flex items-center disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={busy}
+                onClick={() => ankiImportRef.current?.click()}
+              >
+                {importing ? "Importing..." : "Import from Anki"}
              </button>
           </div>
         </div>

@@ -6,7 +6,7 @@ from typing import List, Optional
 
 import genanki
 
-from .cards import stable_card_guid
+from .cards import stable_card_guid, strip_anki_sound_tags
 
 
 def _anki_id(seed: str) -> int:
@@ -114,16 +114,18 @@ def export_deck(deck: dict, cards: List[dict]) -> bytes:
                     t.strip().replace(" ", "_") for t in raw_tags if t and t.strip()
                 )
             )
-            front = (
+            front_content = (
                 card["anki_front_override"]
                 if card.get("anki_front_override") is not None
-                else f"{card['front']}{front_audio_tag}"
+                else card["front"]
             )
-            back = (
+            back_content = (
                 card["anki_back_override"]
                 if card.get("anki_back_override") is not None
-                else f"{card['back']}{back_audio_tag}"
+                else card["back"]
             )
+            front = f"{strip_anki_sound_tags(front_content)}{front_audio_tag}"
+            back = f"{strip_anki_sound_tags(back_content)}{back_audio_tag}"
             card["_anki_front_exported"] = front
             card["_anki_back_exported"] = back
             note = TimestampedNote(

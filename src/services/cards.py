@@ -1,4 +1,5 @@
 import io
+import re
 import sqlite3
 import tempfile
 import uuid
@@ -50,6 +51,7 @@ DIFFICULTY_LEVELS = ("A1", "A2", "B1", "B2", "C1", "C2")
 
 
 CARD_GUID_NAMESPACE = uuid.uuid5(uuid.NAMESPACE_DNS, "anki-words-builder/card")
+ANKI_SOUND_TAG = re.compile(r"(?:<br\s*/?>)?\s*\[sound:[^\]]+\]", re.IGNORECASE)
 
 
 def _attach_tags_to_groups(groups: List[dict]) -> List[dict]:
@@ -85,6 +87,10 @@ def stable_card_uuid(entry_anki_id: uuid.UUID, direction: str) -> uuid.UUID:
 
 def stable_card_guid(entry_anki_id: uuid.UUID, direction: str) -> str:
     return stable_card_uuid(entry_anki_id, direction).hex
+
+
+def strip_anki_sound_tags(face: str) -> str:
+    return ANKI_SOUND_TAG.sub("", face).rstrip()
 
 
 def _validate_payload(payload: dict, field_schema: List[dict]):
@@ -686,9 +692,9 @@ def import_anki_package(owner_id: uuid.UUID, cards: List[dict], package: bytes) 
                     """,
                     (
                         faces_changed,
-                        front,
+                        strip_anki_sound_tags(front),
                         faces_changed,
-                        back,
+                        strip_anki_sound_tags(back),
                         Json(scheduling),
                         faces_changed,
                         _uuid(card["id"]),
