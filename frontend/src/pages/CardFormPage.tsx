@@ -344,7 +344,7 @@ export function CardFormPage({ mode }: Props) {
     if (!deckIdForSubmit) return;
     setMessage("");
     setError("");
-    const processingAction = action === "populate_all";
+    const processingAction = action === "populate_all" || action.startsWith("regen_");
     const actionPayload = mode === "create" && !detailsUnlocked
       ? { ...payload, [activeInputMode === "native" ? "foreign_phrase" : "native_phrase"]: "" }
       : payload;
@@ -542,13 +542,13 @@ export function CardFormPage({ mode }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Card details</h2>
               <div className="flex flex-wrap gap-2 text-xs">
-                <button className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_native_phrase")}>
+                <button disabled={isProcessing} className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_native_phrase")}>
                   Regenerate translation
                 </button>
-                <button className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_dictionary_entry")}>
+                <button disabled={isProcessing} className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_dictionary_entry")}>
                   Regenerate dictionary
                 </button>
-                <button className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_example_sentence")}>
+                <button disabled={isProcessing} className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_example_sentence")}>
                   Regenerate example
                 </button>
               </div>
@@ -575,10 +575,10 @@ export function CardFormPage({ mode }: Props) {
             <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Audio & playback</h2>
               <div className="flex flex-wrap gap-2 text-xs">
-                <button className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_audio")}>
+                <button disabled={isProcessing} className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("regen_audio")}>
                   Regenerate audio
                 </button>
-                <button className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("fetch_audio")}>
+                <button disabled={isProcessing} className="rounded-full border border-slate-300 px-3 py-1 text-slate-600 dark:border-slate-600 dark:text-slate-200" onClick={() => runAction("fetch_audio")}>
                   Fetch from URL
                 </button>
               </div>
