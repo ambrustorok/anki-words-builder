@@ -61,7 +61,7 @@ export default defineConfig(({ mode }) => {
         },
         includeAssets: ["icons/*.png"],
         devOptions: {
-          enabled: true,
+          enabled: false,
         },
       }),
     ],
