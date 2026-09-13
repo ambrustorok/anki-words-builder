@@ -58,6 +58,12 @@ def init_db():
                 "ALTER TABLE users ADD COLUMN IF NOT EXISTS models_locked BOOLEAN NOT NULL DEFAULT FALSE"
             )
             cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS openai_api_base TEXT"
+            )
+            cur.execute(
+                "ALTER TABLE users ADD COLUMN IF NOT EXISTS openai_audio_api_base TEXT"
+            )
+            cur.execute(
                 """
                 CREATE TABLE IF NOT EXISTS user_emails (
                     id UUID PRIMARY KEY,

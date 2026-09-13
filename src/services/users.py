@@ -102,6 +102,7 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
                 """
                 SELECT u.id, u.native_language, u.is_admin,
                        u.text_model, u.audio_model, u.theme, u.models_locked,
+                       u.openai_api_base, u.openai_audio_api_base,
                        ue.email AS primary_email
                 FROM users u
                 LEFT JOIN user_emails ue ON ue.user_id = u.id AND ue.is_primary = TRUE
@@ -121,6 +122,8 @@ def get_user(user_id: uuid.UUID) -> Optional[dict]:
                 "audio_model": row.get("audio_model"),
                 "theme": row.get("theme") or "system",
                 "models_locked": bool(row.get("models_locked")),
+                "openai_api_base": row.get("openai_api_base"),
+                "openai_audio_api_base": row.get("openai_audio_api_base"),
             }
 
 
@@ -273,11 +276,38 @@ def delete_user(user_id: uuid.UUID) -> bool:
 
 
 def set_admin_status(user_id: uuid.UUID, is_admin: bool):
+    """Set per-user admin status.
+
+    Priority: provided value overrides any existing value.
+    """
     with get_connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "UPDATE users SET is_admin = %s WHERE id = %s",
+                """UPDATE users
+                SET is_admin = %s WHERE id = %s""",
                 (is_admin, _uuid(user_id)),
+            )
+        conn.commit()
+
+
+def set_user_openai_base(
+    user_id: uuid.UUID,
+    *,
+    openai_api_base: Optional[str] = None,
+    openai_audio_api_base: Optional[str] = None,
+) -> None:
+    """Set per-user OpenAI API base URL.
+
+    Priority: provided value overrides any existing value.
+    """
+    with get_connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                """UPDATE users
+                SET openai_api_base = COALESCE(%s, openai_api_base),
+                    openai_audio_api_base = COALESCE(%s, openai_audio_api_base)
+                WHERE id = %s""",
+                (openai_api_base, openai_audio_api_base, _uuid(user_id)),
             )
         conn.commit()
 

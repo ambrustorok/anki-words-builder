@@ -8,7 +8,15 @@ import App from "./App";
 import "./index.css";
 
 // Register service worker — auto-updates when a new version is deployed
-registerSW({ immediate: true });
+const updateSW = registerSW({
+  immediate: true,
+  onNeedRefresh() {
+    if (confirm("New version available. Reload?")) updateSW(true);
+  },
+  onOfflineReady() {
+    console.log("App ready for offline use");
+  },
+});
 
 const queryClient = new QueryClient();
 

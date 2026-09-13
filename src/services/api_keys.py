@@ -100,25 +100,46 @@ def user_can_generate(user_id: uuid.UUID) -> bool:
     return bool(get_user_api_key(user_id)) or has_system_api_key()
 
 
-def _make_client(api_key: str) -> OpenAI:
-    """Build an OpenAI client, injecting the admin-configured base URL if set."""
-    base_url = app_settings_service.get_openai_api_base()
+def _make_client(api_key: str, api_base: Optional[str] = None) -> OpenAI:
+    """Build an OpenAI client, injecting per-user API base URL if set.
+
+    Priority: per-user > system config > default (no base_url).
+    If neither per-user nor system is set, the OpenAI client uses the default
+    OpenAI endpoint (no custom base_url).
+    """
     kwargs: dict = {"api_key": api_key}
-    if base_url:
-        kwargs["base_url"] = base_url
+    # Per-user API base takes priority
+    if api_base:
+        kwargs["base_url"] = api_base
+    elif app_settings_service.get_openai_api_base():
+        kwargs["base_url"] = app_settings_service.get_openai_api_base()
     return OpenAI(**kwargs)
+
 
 
 def get_openai_client_for_user(user_id: uuid.UUID) -> OpenAI:
     user_key = get_user_api_key(user_id)
     if user_key:
-        return _make_client(user_key)
+        with get_connection() as conn:
+            with conn.cursor(cursor_factory=RealDictCursor) as cur:
+                cur.execute(
+                    "SELECT openai_api_base, openai_audio_api_base FROM users WHERE id = %s",
+                    (_uuid(user_id),),
+                )
+                row = cur.fetchone()
+                api_base = row["openai_api_base"] if row else None
+                # Note: audio_api_base is fetched but not used in _make_client for now
+                # as OpenAI client only supports one base_url. Full support for
+                # separate text/audio bases would require separate client instances.
+        return _make_client(user_key, api_base)
+
     if SYSTEM_OPENAI_KEY:
-        return _make_client(SYSTEM_OPENAI_KEY)
+        base_url = app_settings_service.get_openai_api_base()
+        return _make_client(SYSTEM_OPENAI_KEY, base_url)
+
     raise MissingAPIKeyError(
         "No OpenAI API key configured. Add one on the profile page."
     )
-
 
 def get_api_key_summary(user_id: uuid.UUID) -> dict:
     key = get_user_api_key(user_id)

@@ -115,7 +115,9 @@ def test_models(payload: ModelTestPayload, user=Depends(get_current_user)):
             detail="Add an OpenAI API key before testing models.",
         )
 
-    return model_service.test_models(user["id"], payload.text_model, payload.audio_model)
+    return model_service.test_models(
+        user["id"], payload.text_model, payload.audio_model
+    )
 
 
 @router.put("/theme")
@@ -181,3 +183,32 @@ def set_primary_email(email_id: str, user=Depends(get_current_user)):
 def delete_account(request: Request, user=Depends(get_current_user)):
     user_service.delete_user(user["id"])
     return {"status": "ok", "logoutUrl": _build_logout_url(request)}
+
+
+class OpenAIBasePayload(BaseModel):
+    openai_api_base: Optional[str] = Field(None, alias="openaiApiBase")
+    openai_audio_api_base: Optional[str] = Field(None, alias="openaiAudioApiBase")
+
+
+@router.put("/openai-api-base")
+def set_openai_api_base(payload: OpenAIBasePayload, user=Depends(get_current_user)):
+    try:
+        user_service.set_user_openai_base(
+            user["id"],
+            openai_api_base=payload.openai_api_base,
+            openai_audio_api_base=payload.openai_audio_api_base,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"status": "ok"}
+
+
+@router.get("/openai-api-base")
+def get_openai_api_base(user=Depends(get_current_user)):
+    user_row = user_service.get_user(user["id"])
+    return {
+        "openaiApiBase": user_row.get("openai_api_base") if user_row else None,
+        "openaiAudioApiBase": user_row.get("openai_audio_api_base")
+        if user_row
+        else None,
+    }
